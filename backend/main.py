@@ -304,23 +304,26 @@ def get_pontos(
 def get_heatmap(
     db: Session = Depends(get_db),
     limit: int = Query(50000, ge=1000, le=500000),
+    cidade: Optional[str] = Query(None),
+    vol_min: float = Query(0, ge=0),
 ):
     """Returns lat/lng/weight points for heatmap based on vol_fat.
+    Supports filtering by cidade and minimum vol_fat threshold.
     Randomly samples up to `limit` points to keep response size manageable.
     """
     from sqlalchemy import func as sqlfunc
-    pontos = (
+    query = (
         db.query(Ponto.cod_latitude, Ponto.cod_longitude, Ponto.vol_fat)
         .filter(
             Ponto.cod_latitude.isnot(None),
             Ponto.cod_longitude.isnot(None),
             Ponto.vol_fat.isnot(None),
-            Ponto.vol_fat > 0,
+            Ponto.vol_fat > vol_min,
         )
-        .order_by(sqlfunc.random())
-        .limit(limit)
-        .all()
     )
+    if cidade:
+        query = query.filter(Ponto.cidade.ilike(f"%{cidade}%"))
+    pontos = query.order_by(sqlfunc.random()).limit(limit).all()
     return [
         [float(p.cod_latitude), float(p.cod_longitude), float(p.vol_fat)]
         for p in pontos

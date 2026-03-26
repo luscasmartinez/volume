@@ -350,3 +350,87 @@ def get_stats(db: Session = Depends(get_db)):
     ).fetchall()
     by_tipo = [{"tipo": r[0] or "N/A", "qtd": r[1], "total_vol": r[2] or 0} for r in result]
     return {"total": total, "com_coords": com_coords, "by_tipo": by_tipo}
+
+
+@app.get("/api/buscar")
+def buscar_ponto(
+    db: Session = Depends(get_db),
+    q: str = Query(..., min_length=1, max_length=200),
+    limit: int = Query(20, le=100),
+):
+    """Busca pontos por nome do cliente ou número da ligação."""
+    from sqlalchemy import or_
+    results = (
+        db.query(Ponto)
+        .filter(
+            Ponto.cod_latitude.isnot(None),
+            Ponto.cod_longitude.isnot(None),
+            or_(
+                Ponto.nom_cliente.ilike(f"%{q}%"),
+                Ponto.num_ligacao.ilike(f"%{q}%"),
+            ),
+        )
+        .limit(limit)
+        .all()
+    )
+    return [
+        {
+            "id": p.id,
+            "lat": p.cod_latitude,
+            "lng": p.cod_longitude,
+            "nom_cliente": p.nom_cliente,
+            "num_ligacao": p.num_ligacao,
+            "tipo_faturamento": p.tipo_faturamento,
+            "cidade": p.cidade,
+            "macro": p.macro,
+            "micro": p.micro,
+            "referencia": p.referencia,
+            "sit_ligacao": p.sit_ligacao,
+            "vol_fat": p.vol_fat,
+            "sum_valor": p.sum_valor,
+            "is_grande": p.is_grande,
+            "categoria": p.categoria,
+        }
+        for p in results
+    ]
+
+
+@app.get("/api/ranking")
+def get_ranking(
+    db: Session = Depends(get_db),
+    limit: int = Query(50, le=200),
+    cidade: Optional[str] = Query(None),
+    tipo_faturamento: Optional[str] = Query(None),
+):
+    """Retorna clientes ordenados por volume faturado (maior → menor)."""
+    query = db.query(Ponto).filter(
+        Ponto.cod_latitude.isnot(None),
+        Ponto.cod_longitude.isnot(None),
+        Ponto.vol_fat.isnot(None),
+        Ponto.vol_fat > 0,
+    )
+    if cidade:
+        query = query.filter(Ponto.cidade == cidade)
+    if tipo_faturamento:
+        query = query.filter(Ponto.tipo_faturamento == tipo_faturamento)
+    pontos = query.order_by(Ponto.vol_fat.desc()).limit(limit).all()
+    return [
+        {
+            "id": p.id,
+            "lat": p.cod_latitude,
+            "lng": p.cod_longitude,
+            "nom_cliente": p.nom_cliente,
+            "num_ligacao": p.num_ligacao,
+            "tipo_faturamento": p.tipo_faturamento,
+            "cidade": p.cidade,
+            "macro": p.macro,
+            "micro": p.micro,
+            "referencia": p.referencia,
+            "sit_ligacao": p.sit_ligacao,
+            "vol_fat": p.vol_fat,
+            "sum_valor": p.sum_valor,
+            "is_grande": p.is_grande,
+            "categoria": p.categoria,
+        }
+        for p in pontos
+    ]

@@ -842,11 +842,24 @@ async function loadFiltros() {
         const res = await fetch(`${API}/api/filtros`);
         const data = await res.json();
         populateSelect('filtroTipo', data.tipos_faturamento);
-        populateSelect('filtroCidade', data.cidades);
         populateSelect('filtroMacro', data.macros);
-        // Also populate the heatmap's own city filter
         populateSelect('heatmapCidade', data.cidades, 'Todas as cidades');
         populateSelect('rankingCidade', data.cidades, 'Todas as cidades');
+
+        // Populate city select; keep existing selection or default to first city
+        const cidadeSel = document.getElementById('filtroCidade');
+        const currentCidade = cidadeSel.value;
+        cidadeSel.innerHTML = '<option value="">Todas</option>';
+        data.cidades.forEach(v => {
+            const opt = document.createElement('option');
+            opt.value = v; opt.textContent = v;
+            cidadeSel.appendChild(opt);
+        });
+        if (currentCidade) {
+            cidadeSel.value = currentCidade;
+        } else if (data.cidades.length > 0) {
+            cidadeSel.value = data.cidades[0];
+        }
     } catch {}
 }
 

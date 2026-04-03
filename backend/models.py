@@ -1,9 +1,17 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime
+from sqlalchemy import Column, Integer, String, Float, DateTime, Index
 from database import Base
 
 
 class Ponto(Base):
     __tablename__ = "pontos"
+    __table_args__ = (
+        # Composite index for Top-10 window-function query (partition key + sort key)
+        Index("ix_pontos_cidade_sum_valor", "cidade", "sum_valor"),
+        # Individual indexes for common filter columns
+        Index("ix_pontos_vol_fat",    "vol_fat"),
+        Index("ix_pontos_num_ligacao", "num_ligacao"),
+        Index("ix_pontos_macro",       "macro"),
+    )
 
     id = Column(Integer, primary_key=True, index=True)
     num_ligacao = Column(String, nullable=True)

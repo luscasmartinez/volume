@@ -11,10 +11,12 @@ import pandas as pd
 
 from database import engine, get_db, Base
 from models import Ponto
+from routers.top_clientes import router as top_clientes_router
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Volume Platform API", version="1.0.0")
+app.include_router(top_clientes_router)
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
@@ -341,6 +343,7 @@ def get_filtros(db: Session = Depends(get_db)):
 
 @app.get("/api/stats")
 def get_stats(db: Session = Depends(get_db)):
+    from sqlalchemy import func as sqlfunc
     total = db.query(Ponto).count()
     com_coords = db.query(Ponto).filter(
         Ponto.cod_latitude.isnot(None), Ponto.cod_longitude.isnot(None)
@@ -349,7 +352,9 @@ def get_stats(db: Session = Depends(get_db)):
         text("SELECT tipo_faturamento, COUNT(*) as qtd, SUM(vol_fat) as total_vol FROM pontos GROUP BY tipo_faturamento ORDER BY qtd DESC")
     ).fetchall()
     by_tipo = [{"tipo": r[0] or "N/A", "qtd": r[1], "total_vol": r[2] or 0} for r in result]
-    return {"total": total, "com_coords": com_coords, "by_tipo": by_tipo}
+    vol_fat_max_row = db.query(sqlfunc.max(Ponto.vol_fat)).filter(Ponto.vol_fat.isnot(None)).scalar()
+    vol_fat_max = float(vol_fat_max_row) if vol_fat_max_row else 0
+    return {"total": total, "com_coords": com_coords, "by_tipo": by_tipo, "vol_fat_max": vol_fat_max}
 
 
 @app.get("/api/buscar")

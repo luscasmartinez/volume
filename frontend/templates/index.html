@@ -438,6 +438,64 @@
         .ranking-name { font-size: 12px; color: #f1f5f9; font-weight: 500; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
         .ranking-meta { font-size: 10px; color: #64748b; margin-top: 2px; }
         .ranking-vol  { font-size: 12px; font-weight: 700; color: #38bdf8; white-space: nowrap; }
+
+        /* ── TOP 10 POR CIDADE ────────────────────────────── */
+        .city-header {
+            padding: 7px 14px;
+            background: linear-gradient(90deg, #1a3a5c 0%, #1e293b 100%);
+            border-left: 3px solid #38bdf8;
+            font-size: 11px;
+            font-weight: 700;
+            color: #38bdf8;
+            letter-spacing: .5px;
+            text-transform: uppercase;
+            position: sticky;
+            top: 0;
+            z-index: 1;
+        }
+        .top10-item {
+            display: flex;
+            align-items: flex-start;
+            gap: 8px;
+            padding: 7px 12px 6px;
+            border-bottom: 1px solid #2d3f55;
+            cursor: pointer;
+            transition: background .15s;
+        }
+        .top10-item:hover { background: #263448; }
+        .top10-item.no-coords { cursor: default; }
+        .top10-pos {
+            font-size: 11px; font-weight: 700; color: #64748b;
+            min-width: 22px; text-align: center; flex-shrink: 0; padding-top: 1px;
+        }
+        .top10-pos.gold   { color: #d4af37; }
+        .top10-pos.silver { color: #94a3b8; }
+        .top10-pos.bronze { color: #cd7f32; }
+        .top10-info { flex: 1; min-width: 0; }
+        .top10-name {
+            font-size: 11px; font-weight: 600; color: #f1f5f9;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .top10-meta { font-size: 10px; color: #64748b; margin-top: 1px; }
+        .top10-bar { height: 3px; background: #1e3a5c; border-radius: 2px; margin-top: 4px; overflow: hidden; }
+        .top10-bar-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #0ea5e9, #10b981);
+            border-radius: 2px; transition: width .4s ease;
+        }
+        .top10-valor {
+            font-size: 11px; font-weight: 700; color: #10b981;
+            text-align: right; white-space: nowrap; flex-shrink: 0; padding-top: 1px;
+        }
+        .top10-controls {
+            padding: 10px 12px; border-bottom: 1px solid #334155;
+            display: flex; gap: 6px; align-items: center; flex-shrink: 0;
+        }
+        .top10-controls select {
+            flex: 1; background: #0f172a; border: 1px solid #334155;
+            border-radius: 6px; color: #e2e8f0; padding: 5px 8px;
+            font-size: 11px; font-family: inherit; outline: none;
+        }
     </style>
 </head>
 <body>
@@ -471,7 +529,8 @@
     <div class="sidebar" id="sidebar">
         <div class="sidebar-tabs">
             <button class="sidebar-tab active" data-tab="filtros">🔍 Filtros</button>
-            <button class="sidebar-tab" data-tab="ranking">🏆 Ranking</button>
+            <button class="sidebar-tab" data-tab="ranking">📊 Ranking</button>
+            <button class="sidebar-tab" data-tab="top10">🏆 Top 10</button>
         </div>
         <div class="sidebar-tab-content" id="tabFiltros">
         <div class="sidebar-scroll">
@@ -647,6 +706,28 @@
                 </div>
             </div>
         </div><!-- /tabRanking -->
+
+        <!-- ── TOP 10 POR CIDADE TAB ─────────────────────── -->
+        <div class="sidebar-tab-content" id="tabTop10" style="display:none">
+            <div class="top10-controls">
+                <select id="top10Cidade">
+                    <option value="">Todas as cidades</option>
+                </select>
+                <select id="top10TopN" style="max-width:80px">
+                    <option value="5">Top 5</option>
+                    <option value="10" selected>Top 10</option>
+                    <option value="20">Top 20</option>
+                </select>
+                <button class="btn btn-primary btn-sm" id="btnAtualizarTop10" title="Atualizar Top 10">↻</button>
+            </div>
+            <div class="sidebar-scroll">
+                <div id="top10List">
+                    <div style="padding:20px;text-align:center;color:#64748b;font-size:12px">
+                        Carregue dados para ver o Top 10
+                    </div>
+                </div>
+            </div>
+        </div><!-- /tabTop10 -->
     </div>
 
     <!-- MAP -->
@@ -845,6 +926,7 @@ async function loadFiltros() {
         populateSelect('filtroMacro', data.macros);
         populateSelect('heatmapCidade', data.cidades, 'Todas as cidades');
         populateSelect('rankingCidade', data.cidades, 'Todas as cidades');
+        populateSelect('top10Cidade',   data.cidades, 'Todas as cidades');
 
         // Populate city select; keep existing selection or default to first city
         const cidadeSel = document.getElementById('filtroCidade');
@@ -883,6 +965,22 @@ async function loadStats() {
         document.getElementById('statTotal').textContent = data.total.toLocaleString('pt-BR');
         document.getElementById('statCoords').textContent = data.com_coords.toLocaleString('pt-BR');
         document.getElementById('statsSection').style.display = '';
+
+        // Set heatmap vol-min slider range dynamically based on real data
+        if (data.vol_fat_max && data.vol_fat_max > 0) {
+            const slider = document.getElementById('heatmapVolMin');
+            if (slider) {
+                const newMax = Math.ceil(data.vol_fat_max / 100) * 100;
+                slider.max  = newMax;
+                slider.step = newMax <= 1000 ? 10 : newMax <= 10000 ? 100 : 500;
+                // Reposition label text on scale hints
+                const hint = slider.nextElementSibling;
+                if (hint) {
+                    const mid = Math.round(newMax / 2);
+                    hint.innerHTML = `<span>0</span><span style="color:#f59e0b">${mid.toLocaleString('pt-BR')}</span><span>${newMax.toLocaleString('pt-BR')}</span>`;
+                }
+            }
+        }
 
         // Tipo breakdown
         const tbody = document.getElementById('tipoBreakdownBody');
@@ -1087,8 +1185,13 @@ document.getElementById('toggleHeatmap').addEventListener('change', async functi
 
 document.getElementById('btnAtualizarHeatmap')?.addEventListener('click', () => activateHeatmap());
 
+// Real-time debounced update: slider moves → heatmap refreshes automatically
+let _heatSliderTimer = null;
 document.getElementById('heatmapVolMin')?.addEventListener('input', function () {
     document.getElementById('heatmapVolMinVal').textContent = Number(this.value).toLocaleString('pt-BR');
+    if (!heatmapActive) return;
+    clearTimeout(_heatSliderTimer);
+    _heatSliderTimer = setTimeout(() => activateHeatmap(), 600);
 });
 
 document.getElementById('btnHeatmapToggle').addEventListener('click', async () => {
@@ -1166,6 +1269,7 @@ document.querySelectorAll('.sidebar-tab').forEach(tab => {
         const tabEl = document.getElementById('tab' + tabId.charAt(0).toUpperCase() + tabId.slice(1));
         if (tabEl) tabEl.style.display = 'flex';
         if (tabId === 'ranking') loadRanking();
+        if (tabId === 'top10')   loadTop10();
     });
 });
 
@@ -1327,6 +1431,98 @@ function flyToPoint(item) {
         setTimeout(() => tempHighlightMarker && tempHighlightMarker.openPopup(), 1600);
     }
 }
+
+// ── TOP 10 POR CIDADE ────────────────────────────────────
+async function loadTop10() {
+    const container = document.getElementById('top10List');
+    if (!container) return;
+    container.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Carregando...</div>';
+
+    const params = new URLSearchParams();
+    const cidade = document.getElementById('top10Cidade')?.value || '';
+    const topN   = document.getElementById('top10TopN')?.value  || '10';
+    if (cidade) params.append('cidade', cidade);
+    params.append('top_n', topN);
+
+    try {
+        const res = await fetch(`${API}/api/top-clientes-por-cidade?${params}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderTop10(data);
+    } catch (err) {
+        container.innerHTML = `<div style="padding:20px;text-align:center;color:#ef4444;font-size:12px">Erro ao carregar dados</div>`;
+        toast('Erro ao carregar Top 10', 'error');
+    }
+}
+
+function renderTop10(data) {
+    const container = document.getElementById('top10List');
+    if (!container) return;
+    if (!data.cidades || data.cidades.length === 0) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Nenhum dado disponível</div>';
+        return;
+    }
+
+    container.innerHTML = '';
+    const fmtBRL = (v) => `R$ ${Number(v).toLocaleString('pt-BR', { maximumFractionDigits: 0 })}`;
+
+    data.cidades.forEach(cidadeData => {
+        const maxValor = cidadeData.max_valor || 1;
+
+        // City header
+        const header = document.createElement('div');
+        header.className = 'city-header';
+        header.textContent = `📍 ${cidadeData.cidade}`;
+        container.appendChild(header);
+
+        // Client rows
+        cidadeData.clientes.forEach(client => {
+            const pos      = client.posicao;
+            const posClass = pos === 1 ? 'gold' : pos === 2 ? 'silver' : pos === 3 ? 'bronze' : '';
+            const pct      = Math.min(100, ((client.total_valor || 0) / maxValor) * 100);
+            const hasCoord = client.lat && client.lng;
+
+            const item = document.createElement('div');
+            item.className = `top10-item${hasCoord ? '' : ' no-coords'}`;
+            item.title     = hasCoord ? 'Clique para ver no mapa' : client.nom_cliente || '';
+            item.innerHTML = `
+                <div class="top10-pos ${posClass}">#${pos}</div>
+                <div class="top10-info">
+                    <div class="top10-name" title="${(client.nom_cliente || '').replace(/"/g, '&quot;')}">${client.nom_cliente || '—'}</div>
+                    <div class="top10-meta">${client.num_ligacao || '—'} · ${client.categoria || '—'}</div>
+                    <div class="top10-bar">
+                        <div class="top10-bar-fill" style="width:${pct.toFixed(1)}%"></div>
+                    </div>
+                </div>
+                <div class="top10-valor">${fmtBRL(client.total_valor)}</div>`;
+
+            if (hasCoord) {
+                item.addEventListener('click', () => flyToPoint({
+                    id:              null,
+                    lat:             client.lat,
+                    lng:             client.lng,
+                    nom_cliente:     client.nom_cliente,
+                    num_ligacao:     client.num_ligacao,
+                    cidade:          client.cidade || cidadeData.cidade,
+                    tipo_faturamento: null,
+                    is_grande:       null,
+                    vol_fat:         client.total_vol,
+                    sum_valor:       client.total_valor,
+                    macro:           client.macro,
+                    micro:           client.micro,
+                    referencia:      null,
+                    sit_ligacao:     null,
+                    categoria:       client.categoria,
+                }));
+            }
+            container.appendChild(item);
+        });
+    });
+}
+
+document.getElementById('btnAtualizarTop10')?.addEventListener('click', () => loadTop10());
+document.getElementById('top10Cidade')?.addEventListener('change', () => loadTop10());
+document.getElementById('top10TopN')?.addEventListener('change', () => loadTop10());
 
 // ── INIT ──────────────────────────────────────────────────
 (async () => {

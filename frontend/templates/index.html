@@ -640,11 +640,23 @@
                         </select>
                     </div>
                     <div class="filter-group">
-                        <label style="font-size:12px">Vol. mínimo (m³): <strong id="heatmapVolMinVal">0</strong></label>
-                        <input type="range" id="heatmapVolMin" min="0" max="500" value="0" step="10"
-                               style="width:100%;accent-color:#f97316;margin-top:4px">
-                        <div style="display:flex;justify-content:space-between;font-size:10px;color:#64748b;margin-top:2px">
-                            <span>0</span><span style="color:#f59e0b">100</span><span>200</span><span>300+</span>
+                        <label style="font-size:12px">Vol. mínimo (m³)</label>
+                        <!-- slider + manual input side-by-side -->
+                        <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
+                            <input type="range" id="heatmapVolMin" min="0" max="500" value="0" step="10"
+                                   style="flex:1;accent-color:#f97316;">
+                            <input type="number" id="heatmapVolMinInput" min="0" max="999999"
+                                   value="0" placeholder="m³"
+                                   style="width:72px;background:#0f172a;border:1px solid #334155;
+                                          border-radius:6px;color:#f97316;padding:4px 6px;
+                                          font-size:12px;font-family:inherit;outline:none;
+                                          text-align:right;"
+                                   onfocus="this.style.borderColor='#f97316'"
+                                   onblur="this.style.borderColor='#334155'">
+                        </div>
+                        <div id="heatmapVolMinVal" style="display:none"></div>
+                        <div id="heatmapSliderHints" style="display:flex;justify-content:space-between;font-size:10px;color:#64748b;margin-top:3px">
+                            <span>0</span><span style="color:#f59e0b">250</span><span>500</span>
                         </div>
                     </div>
                     <button class="btn btn-primary" id="btnAtualizarHeatmap"
@@ -974,7 +986,11 @@ async function loadStats() {
                 slider.max  = newMax;
                 slider.step = newMax <= 1000 ? 10 : newMax <= 10000 ? 100 : 500;
                 // Reposition label text on scale hints
-                const hint = slider.nextElementSibling;
+                // sync input max
+                const numInput = document.getElementById('heatmapVolMinInput');
+                if (numInput) numInput.max = newMax;
+                // update scale hints
+                const hint = document.getElementById('heatmapSliderHints');
                 if (hint) {
                     const mid = Math.round(newMax / 2);
                     hint.innerHTML = `<span>0</span><span style="color:#f59e0b">${mid.toLocaleString('pt-BR')}</span><span>${newMax.toLocaleString('pt-BR')}</span>`;
@@ -1119,7 +1135,9 @@ async function activateHeatmap() {
         // Build heatmap query params from its own controls
         const heatParams = new URLSearchParams();
         const hCidade = document.getElementById('heatmapCidade')?.value || '';
-        const hVolMin = document.getElementById('heatmapVolMin')?.value || '0';
+        const hVolMin = document.getElementById('heatmapVolMinInput')?.value
+                     || document.getElementById('heatmapVolMin')?.value
+                     || '0';
         if (hCidade) heatParams.append('cidade', hCidade);
         if (Number(hVolMin) > 0) heatParams.append('vol_min', hVolMin);
 
@@ -1185,13 +1203,30 @@ document.getElementById('toggleHeatmap').addEventListener('change', async functi
 
 document.getElementById('btnAtualizarHeatmap')?.addEventListener('click', () => activateHeatmap());
 
-// Real-time debounced update: slider moves → heatmap refreshes automatically
+// ── Slider ↔ Number input sync + debounced heatmap refresh ───────────────
 let _heatSliderTimer = null;
-document.getElementById('heatmapVolMin')?.addEventListener('input', function () {
-    document.getElementById('heatmapVolMinVal').textContent = Number(this.value).toLocaleString('pt-BR');
+
+function _syncHeatControls(val) {
+    const slider   = document.getElementById('heatmapVolMin');
+    const numInput = document.getElementById('heatmapVolMinInput');
+    const clamped  = Math.max(0, Math.min(Number(slider?.max || 999999), val));
+    if (slider)   slider.value   = clamped;
+    if (numInput) numInput.value = clamped;
     if (!heatmapActive) return;
     clearTimeout(_heatSliderTimer);
     _heatSliderTimer = setTimeout(() => activateHeatmap(), 600);
+}
+
+document.getElementById('heatmapVolMin')?.addEventListener('input', function () {
+    _syncHeatControls(Number(this.value));
+});
+
+document.getElementById('heatmapVolMinInput')?.addEventListener('input', function () {
+    _syncHeatControls(Number(this.value));
+});
+// Also update on blur in case user types and presses Tab / clicks away
+document.getElementById('heatmapVolMinInput')?.addEventListener('change', function () {
+    _syncHeatControls(Number(this.value));
 });
 
 document.getElementById('btnHeatmapToggle').addEventListener('click', async () => {

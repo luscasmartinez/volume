@@ -496,6 +496,68 @@
             border-radius: 6px; color: #e2e8f0; padding: 5px 8px;
             font-size: 11px; font-family: inherit; outline: none;
         }
+
+        /* ── DB VIEWER ───────────────────────────────────── */
+        .db-viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .db-toolbar {
+            display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+            padding: 10px 12px; border-bottom: 1px solid #334155;
+            background: #0f172a; flex-shrink: 0;
+        }
+        .db-toolbar select, .db-toolbar input {
+            background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+            color: #e2e8f0; padding: 5px 8px; font-size: 12px; font-family: inherit; outline: none;
+        }
+        .db-toolbar select { min-width: 120px; }
+        .db-toolbar input[type="text"] { width: 180px; }
+        .db-scroll { flex: 1; overflow: auto; padding: 0; }
+        .db-table {
+            width: 100%; border-collapse: collapse; font-size: 11px;
+            table-layout: auto;
+        }
+        .db-table th {
+            position: sticky; top: 0; z-index: 2;
+            background: #1e293b; color: #64748b; font-weight: 600;
+            padding: 6px 8px; text-align: left; border-bottom: 1px solid #334155;
+            white-space: nowrap; cursor: pointer;
+        }
+        .db-table th:hover { color: #38bdf8; }
+        .db-table td {
+            padding: 5px 8px; color: #cbd5e1; border-bottom: 1px solid #1a2332;
+            max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+        }
+        .db-table tr:hover td { background: rgba(255,255,255,0.03); }
+        .db-table .action-cell { white-space: nowrap; }
+        .db-pager {
+            display: flex; align-items: center; justify-content: space-between;
+            padding: 8px 12px; border-top: 1px solid #334155;
+            background: #0f172a; flex-shrink: 0; font-size: 11px; color: #64748b;
+        }
+        .db-modal-overlay {
+            position: fixed; inset: 0; background: rgba(0,0,0,0.6);
+            z-index: 9998; display: none; align-items: center; justify-content: center;
+        }
+        .db-modal-overlay.show { display: flex; }
+        .db-modal {
+            background: #1e293b; border: 1px solid #334155; border-radius: 12px;
+            padding: 20px; min-width: 400px; max-width: 600px; max-height: 80vh;
+            overflow-y: auto;
+        }
+        .db-modal h3 { font-size: 14px; margin-bottom: 12px; color: #f1f5f9; }
+        .db-form-group { margin-bottom: 10px; }
+        .db-form-group label {
+            display: block; font-size: 10px; color: #64748b; margin-bottom: 3px;
+            text-transform: uppercase; letter-spacing: 0.5px;
+        }
+        .db-form-group input {
+            width: 100%; background: #0f172a; border: 1px solid #334155;
+            border-radius: 6px; color: #e2e8f0; padding: 6px 8px;
+            font-size: 12px; font-family: monospace; outline: none;
+        }
+        .db-form-group input:focus { border-color: #3b82f6; }
+        .db-modal-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
+        .db-row-count { white-space: nowrap; }
+        .db-confirm { padding: 4px 6px; cursor: pointer; }
     </style>
 </head>
 <body>
@@ -519,6 +581,7 @@
         <button class="btn btn-outline btn-sm" id="btnFitBounds">⊕ Ajustar mapa</button>
         <button class="btn btn-outline btn-sm" id="btnResetFilters">✕ Limpar filtros</button>
         <button class="btn btn-primary btn-sm" id="btnRefresh">↻ Atualizar</button>
+        <button class="btn btn-outline btn-sm" id="btnDbViewer">🛠️ BD</button>
     </div>
 </div>
 
@@ -740,6 +803,32 @@
                 </div>
             </div>
         </div><!-- /tabTop10 -->
+
+        <!-- ── DB VIEWER TAB ─────────────────────────────── -->
+        <div class="sidebar-tab-content" id="tabDbviewer" style="display:none">
+            <div class="db-viewer">
+                <div class="db-toolbar">
+                    <select id="dbTableSelect"><option value="">Selecione tabela...</option></select>
+                    <input type="text" id="dbSearchInput" placeholder="Buscar..." />
+                    <button class="btn btn-sm btn-primary" id="dbBtnSearch">Buscar</button>
+                    <button class="btn btn-sm btn-success" id="dbBtnCreate">+ Novo</button>
+                    <button class="btn btn-sm btn-outline" id="dbBtnRefresh">↻</button>
+                </div>
+                <div class="db-scroll">
+                    <table class="db-table" id="dbTable">
+                        <thead id="dbTableHead"></thead>
+                        <tbody id="dbTableBody"></tbody>
+                    </table>
+                </div>
+                <div class="db-pager">
+                    <span id="dbPagerInfo" class="db-row-count">—</span>
+                    <div style="display:flex;gap:6px;align-items:center">
+                        <button class="btn btn-sm btn-outline" id="dbBtnPrev" disabled>&larr; Anterior</button>
+                        <button class="btn btn-sm btn-outline" id="dbBtnNext" disabled>Próxima &rarr;</button>
+                    </div>
+                </div>
+            </div>
+        </div><!-- /tabDbviewer -->
     </div>
 
     <!-- MAP -->
@@ -757,6 +846,18 @@
         <div class="loading-overlay" id="loadingOverlay">
             <div class="spinner"></div>
             <span id="loadingText">Carregando dados...</span>
+        </div>
+    </div>
+</div>
+
+<!-- DB Viewer Modal -->
+<div class="db-modal-overlay" id="dbModal">
+    <div class="db-modal">
+        <h3 id="dbModalTitle">Editar Registro</h3>
+        <div id="dbModalForm"></div>
+        <div class="db-modal-actions">
+            <button class="btn btn-sm btn-outline" id="dbModalCancel">Cancelar</button>
+            <button class="btn btn-sm btn-success" id="dbModalSave">Salvar</button>
         </div>
     </div>
 </div>
@@ -779,6 +880,17 @@
 <script>
 // ── CONFIG ────────────────────────────────────────────────
 const API = '';  // same origin
+
+// ── XSS PROTECTION ────────────────────────────────────────
+function esc(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#x27;');
+}
 
 // ── 7-CLASS COLOR SYSTEM (from mapa/app.py) ─────────────
 const CLASS_COLORS = {
@@ -954,7 +1066,9 @@ async function loadFiltros() {
         } else if (data.cidades.length > 0) {
             cidadeSel.value = data.cidades[0];
         }
-    } catch {}
+    } catch (err) {
+        console.error('Failed to load filters:', err);
+    }
 }
 
 function populateSelect(id, items, allLabel = 'Todos') {
@@ -1011,7 +1125,9 @@ async function loadStats() {
             tbody.appendChild(tr);
         });
         document.getElementById('tipoBreakdownSection').style.display = '';
-    } catch {}
+    } catch (err) {
+        console.error('Failed to load stats:', err);
+    }
 }
 
 // ── PONTOS (MARKERS) ──────────────────────────────────────
@@ -1082,25 +1198,25 @@ function buildPopup(p) {
     const volFmt = p.vol_fat != null ? Number(p.vol_fat).toLocaleString('pt-BR', {maximumFractionDigits: 2}) : '—';
     const sumFmt = p.sum_valor != null ? `R$ ${Number(p.sum_valor).toLocaleString('pt-BR', {minimumFractionDigits:2})}` : '—';
     return `<div class="popup-content">
-        <h4>💧 ${p.nom_cliente || 'Cliente'}</h4>
+        <h4>💧 ${esc(p.nom_cliente) || 'Cliente'}</h4>
         <div class="popup-row">
             <span class="key">Tipo</span>
-            <span class="val"><span class="tipo-badge" style="background:${color}22;color:${color};border:1px solid ${color}">${p.tipo_faturamento || '—'}</span></span>
+            <span class="val"><span class="tipo-badge" style="background:${color}22;color:${color};border:1px solid ${color}">${esc(p.tipo_faturamento) || '—'}</span></span>
         </div>
         <div class="popup-row">
             <span class="key">Classe</span>
-            <span class="val"><span class="tipo-badge" style="background:${color}33;color:${color};border:1px solid ${color};font-weight:700">${classe}</span></span>
+            <span class="val"><span class="tipo-badge" style="background:${color}33;color:${color};border:1px solid ${color};font-weight:700">${esc(classe)}</span></span>
         </div>
-        <div class="popup-row"><span class="key">Nº Ligação</span><span class="val">${p.num_ligacao || '—'}</span></div>
-        <div class="popup-row"><span class="key">Cidade</span><span class="val">${p.cidade || '—'}</span></div>
-        <div class="popup-row"><span class="key">Macro</span><span class="val">${p.macro || '—'}</span></div>
-        <div class="popup-row"><span class="key">Micro</span><span class="val">${p.micro || '—'}</span></div>
-        <div class="popup-row"><span class="key">Referência</span><span class="val">${p.referencia || '—'}</span></div>
-        <div class="popup-row"><span class="key">Categoria</span><span class="val">${p.categoria || '—'}</span></div>
-        <div class="popup-row"><span class="key">Situação</span><span class="val">${p.sit_ligacao || '—'}</span></div>
+        <div class="popup-row"><span class="key">Nº Ligação</span><span class="val">${esc(p.num_ligacao) || '—'}</span></div>
+        <div class="popup-row"><span class="key">Cidade</span><span class="val">${esc(p.cidade) || '—'}</span></div>
+        <div class="popup-row"><span class="key">Macro</span><span class="val">${esc(p.macro) || '—'}</span></div>
+        <div class="popup-row"><span class="key">Micro</span><span class="val">${esc(p.micro) || '—'}</span></div>
+        <div class="popup-row"><span class="key">Referência</span><span class="val">${esc(p.referencia) || '—'}</span></div>
+        <div class="popup-row"><span class="key">Categoria</span><span class="val">${esc(p.categoria) || '—'}</span></div>
+        <div class="popup-row"><span class="key">Situação</span><span class="val">${esc(p.sit_ligacao) || '—'}</span></div>
         <div class="popup-row"><span class="key">Vol. Fat. (m³)</span><span class="val">${volFmt}</span></div>
         <div class="popup-row"><span class="key">Valor Total</span><span class="val">${sumFmt}</span></div>
-        <div class="popup-row"><span class="key">Grande Cons.</span><span class="val">${p.is_grande || '—'}</span></div>
+        <div class="popup-row"><span class="key">Grande Cons.</span><span class="val">${esc(p.is_grande) || '—'}</span></div>
         <div class="popup-row" style="border-top:1px solid #334155;margin-top:4px;padding-top:4px">
             <span class="key">Coords</span>
             <span class="val" style="font-size:10px">${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}</span>
@@ -1341,6 +1457,22 @@ document.addEventListener('click', e => {
     if (wrap && !wrap.contains(e.target)) searchDropdown.classList.remove('show');
 });
 
+// ── DB VIEWER TOPBAR BUTTON ───────────────────────────────
+document.getElementById('btnDbViewer')?.addEventListener('click', () => {
+    // Deactivate sidebar tabs and show DB viewer tab
+    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
+    document.querySelectorAll('.sidebar-tab-content').forEach(c => c.style.display = 'none');
+    const dbTab = document.getElementById('tabDbviewer');
+    if (dbTab) dbTab.style.display = 'flex';
+
+    // Ensure sidebar is visible
+    const sidebar = document.getElementById('sidebar');
+    if (sidebar.classList.contains('collapsed')) sidebar.classList.remove('collapsed');
+
+    if (dbCurrentTable) dbLoadRows(dbCurrentTable);
+    dbLoadTables();
+});
+
 async function doSearch(q) {
     searchDropdown.innerHTML = '<div class="search-no-results">Buscando...</div>';
     searchDropdown.classList.add('show');
@@ -1367,8 +1499,8 @@ function renderSearchResults(results) {
             ? Number(item.vol_fat).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' m³'
             : '—';
         div.innerHTML = `
-            <div class="sr-name">${item.nom_cliente || '—'}</div>
-            <div class="sr-meta">Nº ${item.num_ligacao || '—'} · ${item.cidade || '—'} · Vol: ${volFmt}</div>`;
+            <div class="sr-name">${esc(item.nom_cliente) || '—'}</div>
+            <div class="sr-meta">Nº ${esc(item.num_ligacao) || '—'} · ${esc(item.cidade) || '—'} · Vol: ${volFmt}</div>`;
         div.addEventListener('click', () => {
             flyToPoint(item);
             searchDropdown.classList.remove('show');
@@ -1422,8 +1554,8 @@ function renderRanking(data) {
         li.innerHTML = `
             <div class="ranking-pos ${posClass}">#${pos}</div>
             <div class="ranking-info">
-                <div class="ranking-name" title="${(item.nom_cliente || '').replace(/"/g, '&quot;')}">${item.nom_cliente || '—'}</div>
-                <div class="ranking-meta">Nº ${item.num_ligacao || '—'} · ${item.cidade || '—'}</div>
+                <div class="ranking-name" title="${esc(item.nom_cliente) || '—'}">${esc(item.nom_cliente) || '—'}</div>
+                <div class="ranking-meta">Nº ${esc(item.num_ligacao) || '—'} · ${esc(item.cidade) || '—'}</div>
             </div>
             <div class="ranking-vol">${volFmt}</div>`;
         li.addEventListener('click', () => flyToPoint(item));
@@ -1523,8 +1655,8 @@ function renderTop10(data) {
             item.innerHTML = `
                 <div class="top10-pos ${posClass}">#${pos}</div>
                 <div class="top10-info">
-                    <div class="top10-name" title="${(client.nom_cliente || '').replace(/"/g, '&quot;')}">${client.nom_cliente || '—'}</div>
-                    <div class="top10-meta">${client.num_ligacao || '—'} · ${client.categoria || '—'}</div>
+                    <div class="top10-name" title="${esc(client.nom_cliente) || '—'}">${esc(client.nom_cliente) || '—'}</div>
+                    <div class="top10-meta">${esc(client.num_ligacao) || '—'} · ${esc(client.categoria) || '—'}</div>
                     <div class="top10-bar">
                         <div class="top10-bar-fill" style="width:${pct.toFixed(1)}%"></div>
                     </div>
@@ -1558,6 +1690,268 @@ function renderTop10(data) {
 document.getElementById('btnAtualizarTop10')?.addEventListener('click', () => loadTop10());
 document.getElementById('top10Cidade')?.addEventListener('change', () => loadTop10());
 document.getElementById('top10TopN')?.addEventListener('change', () => loadTop10());
+
+// ── DB VIEWER ─────────────────────────────────────────────
+let dbCurrentTable = null;
+let dbCurrentOffset = 0;
+let dbCurrentSort = 'id';
+let dbCurrentOrder = 'desc';
+let dbCurrentSearch = '';
+const DB_PAGE_SIZE = 50;
+
+async function dbLoadTables() {
+    try {
+        const res = await fetch(`${API}/api/db/tables`);
+        const data = await res.json();
+        const sel = document.getElementById('dbTableSelect');
+        sel.innerHTML = '<option value="">Selecione tabela...</option>';
+        data.tables.forEach(t => {
+            const opt = document.createElement('option');
+            opt.value = t.name;
+            opt.textContent = `${t.name} (${t.row_count} rows)`;
+            sel.appendChild(opt);
+        });
+    } catch (err) {
+        console.error('Failed to load DB tables:', err);
+        toast('Erro ao carregar tabelas do banco', 'error');
+    }
+}
+
+async function dbLoadRows(table) {
+    if (!table) return;
+    const tbody = document.getElementById('dbTableBody');
+    const thead = document.getElementById('dbTableHead');
+    tbody.innerHTML = '<tr><td style="padding:20px;text-align:center;color:#64748b">Carregando...</td></tr>';
+
+    const params = new URLSearchParams();
+    params.set('limit', DB_PAGE_SIZE);
+    params.set('offset', dbCurrentOffset);
+    if (dbCurrentSort) params.set('sort', dbCurrentSort);
+    if (dbCurrentOrder) params.set('order', dbCurrentOrder);
+    if (dbCurrentSearch) params.set('search', dbCurrentSearch);
+
+    try {
+        const res = await fetch(`${API}/api/db/${encodeURIComponent(table)}/rows?${params}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        renderTableHeaders(data.columns);
+        renderTableRows(data.rows);
+        document.getElementById('dbPagerInfo').textContent =
+            `Mostrando ${data.rows.length} de ${data.total} registros (offset: ${data.offset})`;
+        document.getElementById('dbBtnPrev').disabled = data.offset <= 0;
+        document.getElementById('dbBtnNext').disabled = data.offset + data.rows.length >= data.total;
+    } catch (err) {
+        console.error('Failed to load rows:', err);
+        tbody.innerHTML = '<tr><td style="padding:20px;text-align:center;color:#ef4444">Erro ao carregar dados</td></tr>';
+    }
+}
+
+function renderTableHeaders(columns) {
+    const thead = document.getElementById('dbTableHead');
+    thead.innerHTML = '<tr>' + columns.map(c =>
+        `<th data-col="${esc(c)}">${esc(c)}</th>`
+    ).join('') + '<th>Ações</th></tr>';
+
+    thead.querySelectorAll('th[data-col]').forEach(th => {
+        th.addEventListener('click', () => {
+            const col = th.dataset.col;
+            if (dbCurrentSort === col) {
+                dbCurrentOrder = dbCurrentOrder === 'asc' ? 'desc' : 'asc';
+            } else {
+                dbCurrentSort = col;
+                dbCurrentOrder = 'asc';
+            }
+            dbCurrentOffset = 0;
+            if (dbCurrentTable) dbLoadRows(dbCurrentTable);
+        });
+    });
+}
+
+function renderTableRows(rows) {
+    const tbody = document.getElementById('dbTableBody');
+    if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td style="padding:20px;text-align:center;color:#64748b" colspan="99">Nenhum registro</td></tr>';
+        return;
+    }
+    tbody.innerHTML = rows.map(row => {
+        const id = row.id;
+        const cells = Object.entries(row).map(([key, val]) =>
+            `<td title="${esc(val)}">${esc(val)}</td>`
+        ).join('');
+        return `<tr>${cells}
+            <td class="action-cell">
+                <button class="btn btn-sm btn-outline btn-xs db-confirm" onclick="dbEditRow(${id})" title="Editar">✏️</button>
+                <button class="btn btn-sm btn-outline btn-xs db-confirm" onclick="dbDeleteRow(${id})" title="Excluir">🗑️</button>
+            </td>
+        </tr>`;
+    }).join('');
+}
+
+function dbEditRow(id) {
+    if (!dbCurrentTable) return;
+    dbOpenModal('edit', id);
+}
+
+function dbDeleteRow(id) {
+    if (!dbCurrentTable) return;
+    if (!confirm(`Excluir registro #${id}? Esta ação não pode ser desfeita.`)) return;
+
+    fetch(`${API}/api/db/${encodeURIComponent(dbCurrentTable)}/rows/${id}`, { method: 'DELETE' })
+        .then(res => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            toast('Registro excluído', 'success');
+            dbLoadRows(dbCurrentTable);
+        })
+        .catch(err => {
+            console.error('Delete error:', err);
+            toast('Erro ao excluir registro', 'error');
+        });
+}
+
+async function dbOpenModal(mode, id = null) {
+    const modal = document.getElementById('dbModal');
+    const title = document.getElementById('dbModalTitle');
+    const formDiv = document.getElementById('dbModalForm');
+
+    if (mode === 'create') {
+        title.textContent = `Novo registro em ${dbCurrentTable}`;
+    } else {
+        title.textContent = `Editar registro #${id}`;
+    }
+
+    // Load schema or row data
+    let rowData = {};
+    if (mode === 'edit' && id) {
+        try {
+            const res = await fetch(`${API}/api/db/${encodeURIComponent(dbCurrentTable)}/detail/${id}`);
+            if (!res.ok) throw new Error();
+            rowData = await res.json();
+        } catch {
+            toast('Erro ao carregar registro', 'error');
+            return;
+        }
+    }
+
+    // Show all fields (we can show a generic form with all columns)
+    let columns = Object.keys(rowData);
+    if (columns.length === 0) {
+        // Fetch one row to get column names
+        try {
+            const res = await fetch(`${API}/api/db/${encodeURIComponent(dbCurrentTable)}/rows?limit=1&offset=0`);
+            const data = await res.json();
+            if (data.columns) columns = data.columns;
+        } catch {
+            console.error('Cannot get schema');
+            return;
+        }
+    }
+
+    let html = '';
+    columns.forEach(col => {
+        if (col === 'id' && mode === 'create') return; // skip auto-increment
+        const safeCol = esc(col);
+        const safeVal = esc(rowData[col] ?? '');
+        html += `<div class="db-form-group">
+            <label>${safeCol}</label>
+            <input type="text" name="${safeCol}" value="${safeVal}" ${col === 'id' ? 'disabled' : ''} />
+        </div>`;
+    });
+    formDiv.innerHTML = html;
+
+    modal.classList.add('show');
+
+    // Set up save handler
+    const saveBtn = document.getElementById('dbModalSave');
+    saveBtn.onclick = async () => {
+        const inputs = formDiv.querySelectorAll('input');
+        const data = {};
+        inputs.forEach(inp => {
+            data[inp.name] = inp.value === '' ? null : inp.value;
+        });
+
+        try {
+            const method = mode === 'create' ? 'POST' : 'PUT';
+            const url = mode === 'create'
+                ? `${API}/api/db/${encodeURIComponent(dbCurrentTable)}/rows`
+                : `${API}/api/db/${encodeURIComponent(dbCurrentTable)}/rows/${id}`;
+
+            const res = await fetch(url, {
+                method,
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data),
+            });
+
+            if (!res.ok) {
+                const err = await res.json();
+                throw new Error(err.detail || `HTTP ${res.status}`);
+            }
+
+            toast(mode === 'create' ? 'Registro criado com sucesso' : 'Registro atualizado', 'success');
+            dbCloseModal();
+            dbLoadRows(dbCurrentTable);
+        } catch (err) {
+            console.error('Save error:', err);
+            toast(`Erro ao salvar: ${err.message}`, 'error');
+        }
+    };
+}
+
+function dbCloseModal() {
+    document.getElementById('dbModal').classList.remove('show');
+}
+
+document.getElementById('dbModalCancel').addEventListener('click', dbCloseModal);
+document.getElementById('dbModal').addEventListener('click', e => {
+    if (e.target === e.currentTarget) dbCloseModal();
+});
+
+// DB Viewer controls
+document.getElementById('dbBtnRefresh').addEventListener('click', () => {
+    if (dbCurrentTable) {
+        dbCurrentOffset = 0;
+        dbCurrentSearch = '';
+        document.getElementById('dbSearchInput').value = '';
+        dbLoadRows(dbCurrentTable);
+    }
+    dbLoadTables();
+});
+
+document.getElementById('dbTableSelect').addEventListener('change', function () {
+    dbCurrentTable = this.value || null;
+    dbCurrentOffset = 0;
+    dbCurrentSearch = '';
+    document.getElementById('dbSearchInput').value = '';
+    if (dbCurrentTable) dbLoadRows(dbCurrentTable);
+});
+
+document.getElementById('dbBtnSearch').addEventListener('click', () => {
+    dbCurrentSearch = document.getElementById('dbSearchInput').value.trim();
+    dbCurrentOffset = 0;
+    if (dbCurrentTable) dbLoadRows(dbCurrentTable);
+});
+
+document.getElementById('dbSearchInput').addEventListener('keydown', e => {
+    if (e.key === 'Enter') {
+        dbCurrentSearch = e.target.value.trim();
+        dbCurrentOffset = 0;
+        if (dbCurrentTable) dbLoadRows(dbCurrentTable);
+    }
+});
+
+document.getElementById('dbBtnCreate').addEventListener('click', () => {
+    if (!dbCurrentTable) { toast('Selecione uma tabela', 'warning'); return; }
+    dbOpenModal('create');
+});
+
+document.getElementById('dbBtnPrev').addEventListener('click', () => {
+    dbCurrentOffset = Math.max(0, dbCurrentOffset - DB_PAGE_SIZE);
+    if (dbCurrentTable) dbLoadRows(dbCurrentTable);
+});
+
+document.getElementById('dbBtnNext').addEventListener('click', () => {
+    dbCurrentOffset += DB_PAGE_SIZE;
+    if (dbCurrentTable) dbLoadRows(dbCurrentTable);
+});
 
 // ── INIT ──────────────────────────────────────────────────
 (async () => {

@@ -1,10 +1,14 @@
 import os
 import io
+import math
+import datetime
+import logging
+import unicodedata
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse, FileResponse
+from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 import pandas as pd
@@ -12,22 +16,25 @@ import pandas as pd
 from database import engine, get_db, Base
 from models import Ponto
 from routers.top_clientes import router as top_clientes_router
+from routers.db_viewer import router as db_viewer_router
+
+logger = logging.getLogger(__name__)
+
+MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
 
 Base.metadata.create_all(bind=engine)
 
 app = FastAPI(title="Volume Platform API", version="1.0.0")
 app.include_router(top_clientes_router)
+app.include_router(db_viewer_router)
 
 from fastapi import Request
 from fastapi.responses import JSONResponse
-import traceback as tb
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    trace = tb.format_exc()
-    print("=== ERRO NÃO TRATADO ===")
-    print(trace)
-    return JSONResponse(status_code=500, content={"detail": f"{str(exc)}\n{trace}"})
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Erro interno do servidor. Consulte os logs para detalhes."})
 
 app.add_middleware(
     CORSMiddleware,
@@ -109,7 +116,6 @@ COLUMN_MAP = {
 
 def normalize_col(name: str) -> str:
     """Normalize column name: uppercase, strip spaces, remove special chars."""
-    import unicodedata
     normalized = unicodedata.normalize("NFD", str(name))
     normalized = "".join(c for c in normalized if unicodedata.category(c) != "Mn")
     return normalized.upper().strip().replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
@@ -124,10 +130,12 @@ async def root():
 
 @app.post("/api/upload")
 async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    if not file.filename.endswith((".xlsx", ".xls")):
+    if not file.filename or not file.filename.endswith((".xlsx", ".xls")):
         raise HTTPException(status_code=400, detail="Arquivo deve ser .xlsx ou .xls")
 
     contents = await file.read()
+    if len(contents) > MAX_UPLOAD_SIZE:
+        raise HTTPException(status_code=413, detail=f"Arquivo muito grande. Limite: {MAX_UPLOAD_SIZE // (1024*1024)} MB")
     try:
         # dtype=object evita que pandas converta automaticamente datas/números
         df = pd.read_excel(io.BytesIO(contents), dtype=object)
@@ -148,7 +156,7 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             rename_map[col] = target
             already_mapped.add(target)
 
-    df.rename(columns=rename_map, inplace=True)
+    df = df.rename(columns=rename_map)
 
     # Coerce numeric columns to float (they come as object/str with dtype=object)
     NUMERIC_FIELDS = [
@@ -160,15 +168,15 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
         if field in df.columns:
             df[field] = pd.to_numeric(df[field], errors='coerce')
 
-    # Clear existing data
+    # Clear existing data (fast bulk delete)
     try:
-        db.query(Ponto).delete()
+        db.execute(text("DELETE FROM pontos"))
         db.commit()
     except Exception as e:
         db.rollback()
         raise HTTPException(status_code=500, detail=f"Erro ao limpar banco: {str(e)}")
 
-    # Insert rows
+    # Insert rows efficiently via SQLAlchemy Core
     model_fields = {c.name for c in Ponto.__table__.columns} - {"id"}
 
     def safe_val(val):
@@ -188,12 +196,10 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             except Exception:
                 pass
         # Convert pandas Timestamp / datetime to string
-        import datetime
         if isinstance(val, (pd.Timestamp, datetime.datetime, datetime.date)):
             return str(val)
         # Convert float: reject inf / -inf
         if isinstance(val, float):
-            import math
             if math.isinf(val) or math.isnan(val):
                 return None
         return val
@@ -205,14 +211,24 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             for field in model_fields:
                 val = row[field] if field in row.index else None
                 data[field] = safe_val(val)
-            records.append(Ponto(**data))
+            records.append(data)
 
-        db.add_all(records)
-        db.commit()
+        if records:
+            db.execute(text(
+                "INSERT INTO pontos (num_ligacao, nom_cliente, categoria, cod_grupo, num_medidor, "
+                "tipo_faturamento, cidade, macro, micro, referencia, sit_ligacao, is_grande, "
+                "cod_latitude, cod_longitude, sum_valor, valor_d1, valor_d2, valor_in1, valor_in2, "
+                "valor_a, qtd_eco1, qtd_eco2, vol_fat)"
+                " VALUES (:num_ligacao, :nom_cliente, :categoria, :cod_grupo, :num_medidor, "
+                ":tipo_faturamento, :cidade, :macro, :micro, :referencia, :sit_ligacao, :is_grande, "
+                ":cod_latitude, :cod_longitude, :sum_valor, :valor_d1, :valor_d2, :valor_in1, :valor_in2, "
+                ":valor_a, :qtd_eco1, :qtd_eco2, :vol_fat)"
+            ), records)
+            db.commit()
     except Exception as e:
         db.rollback()
-        import traceback
-        raise HTTPException(status_code=500, detail=f"Erro ao inserir dados: {str(e)} | {traceback.format_exc()}")
+        logger.exception("Error inserting upload data")
+        raise HTTPException(status_code=500, detail=f"Erro ao inserir dados: {str(e)}")
 
     # Report unmapped columns for debugging
     unmapped = [normalized_cols[i] for i, orig in enumerate(normalized_cols)
@@ -311,7 +327,7 @@ def get_heatmap(
 ):
     """Returns lat/lng/weight points for heatmap based on vol_fat.
     Supports filtering by cidade and minimum vol_fat threshold.
-    Randomly samples up to `limit` points to keep response size manageable.
+    Samples up to `limit` points ordered by ID descending.
     """
     from sqlalchemy import func as sqlfunc
     query = (
@@ -324,8 +340,8 @@ def get_heatmap(
         )
     )
     if cidade:
-        query = query.filter(Ponto.cidade.ilike(f"%{cidade}%"))
-    pontos = query.order_by(sqlfunc.random()).limit(limit).all()
+        query = query.filter(Ponto.cidade.contains(cidade))
+    pontos = query.order_by(Ponto.id.desc()).limit(limit).all()
     return [
         [float(p.cod_latitude), float(p.cod_longitude), float(p.vol_fat)]
         for p in pontos
@@ -371,8 +387,8 @@ def buscar_ponto(
             Ponto.cod_latitude.isnot(None),
             Ponto.cod_longitude.isnot(None),
             or_(
-                Ponto.nom_cliente.ilike(f"%{q}%"),
-                Ponto.num_ligacao.ilike(f"%{q}%"),
+                Ponto.nom_cliente.contains(q),
+                Ponto.num_ligacao.contains(q),
             ),
         )
         .limit(limit)

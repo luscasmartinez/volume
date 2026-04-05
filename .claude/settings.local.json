@@ -1,0 +1,10 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(python -c \"from main import app; print\\(''OK, routes:''\\); print\\([r.path for r in app.routes]\\)\")",
+      "Bash(python -c \"from main import app; print\\(''OK''\\)\")",
+      "Bash(python -c \"import sys; from main import app; print\\(''OK''\\)\")",
+      "Bash(python -c \":*)"
+    ]
+  }
+}

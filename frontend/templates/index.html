@@ -497,42 +497,55 @@
             font-size: 11px; font-family: inherit; outline: none;
         }
 
-        /* ── DB VIEWER ───────────────────────────────────── */
-        .db-viewer { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
-        .db-toolbar {
+        /* ── DB VIEWER FULLSCREEN ──────────────────────────── */
+        .db-fullscreen {
+            position: fixed; inset: 0; z-index: 9990;
+            background: #0f172a; display: none;
+            flex-direction: column;
+        }
+        .db-fullscreen.show { display: flex; }
+        .db-topbar {
             display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
-            padding: 10px 12px; border-bottom: 1px solid #334155;
-            background: #0f172a; flex-shrink: 0;
+            padding: 12px 16px; border-bottom: 1px solid #334155;
+            background: #1e293b; flex-shrink: 0;
         }
-        .db-toolbar select, .db-toolbar input {
+        .db-topbar select, .db-topbar input {
             background: #0f172a; border: 1px solid #334155; border-radius: 6px;
-            color: #e2e8f0; padding: 5px 8px; font-size: 12px; font-family: inherit; outline: none;
+            color: #e2e8f0; padding: 6px 10px; font-size: 13px; font-family: inherit; outline: none;
         }
-        .db-toolbar select { min-width: 120px; }
-        .db-toolbar input[type="text"] { width: 180px; }
-        .db-scroll { flex: 1; overflow: auto; padding: 0; }
+        .db-topbar select { min-width: 140px; }
+        .db-topbar input[type="text"] { width: 200px; }
+        .db-topbar .spacer { flex: 1; }
+        .db-scroll { flex: 1; overflow: auto; }
         .db-table {
-            width: 100%; border-collapse: collapse; font-size: 11px;
+            width: 100%; border-collapse: collapse; font-size: 12px;
             table-layout: auto;
         }
         .db-table th {
             position: sticky; top: 0; z-index: 2;
             background: #1e293b; color: #64748b; font-weight: 600;
-            padding: 6px 8px; text-align: left; border-bottom: 1px solid #334155;
-            white-space: nowrap; cursor: pointer;
+            padding: 8px 10px; text-align: left; border-bottom: 1px solid #334155;
+            white-space: nowrap; cursor: pointer; font-size: 11px;
+            text-transform: uppercase; letter-spacing: 0.5px;
         }
         .db-table th:hover { color: #38bdf8; }
         .db-table td {
-            padding: 5px 8px; color: #cbd5e1; border-bottom: 1px solid #1a2332;
-            max-width: 200px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            padding: 6px 10px; color: #cbd5e1; border-bottom: 1px solid #1a2332;
+            max-width: 220px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+            font-size: 12px;
         }
         .db-table tr:hover td { background: rgba(255,255,255,0.03); }
-        .db-table .action-cell { white-space: nowrap; }
+        .db-table .action-cell { white-space: nowrap; width: 1%; }
         .db-pager {
             display: flex; align-items: center; justify-content: space-between;
-            padding: 8px 12px; border-top: 1px solid #334155;
-            background: #0f172a; flex-shrink: 0; font-size: 11px; color: #64748b;
+            padding: 10px 16px; border-top: 1px solid #334155;
+            background: #1e293b; flex-shrink: 0; font-size: 12px; color: #64748b;
         }
+        .db-btn-danger {
+            background: #dc2626; color: #fff;
+        }
+        .db-btn-danger:hover { background: #b91c1c; }
+        /* Row edit/create modal */
         .db-modal-overlay {
             position: fixed; inset: 0; background: rgba(0,0,0,0.6);
             z-index: 9998; display: none; align-items: center; justify-content: center;
@@ -556,7 +569,6 @@
         }
         .db-form-group input:focus { border-color: #3b82f6; }
         .db-modal-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
-        .db-row-count { white-space: nowrap; }
         .db-confirm { padding: 4px 6px; cursor: pointer; }
     </style>
 </head>
@@ -804,31 +816,6 @@
             </div>
         </div><!-- /tabTop10 -->
 
-        <!-- ── DB VIEWER TAB ─────────────────────────────── -->
-        <div class="sidebar-tab-content" id="tabDbviewer" style="display:none">
-            <div class="db-viewer">
-                <div class="db-toolbar">
-                    <select id="dbTableSelect"><option value="">Selecione tabela...</option></select>
-                    <input type="text" id="dbSearchInput" placeholder="Buscar..." />
-                    <button class="btn btn-sm btn-primary" id="dbBtnSearch">Buscar</button>
-                    <button class="btn btn-sm btn-success" id="dbBtnCreate">+ Novo</button>
-                    <button class="btn btn-sm btn-outline" id="dbBtnRefresh">↻</button>
-                </div>
-                <div class="db-scroll">
-                    <table class="db-table" id="dbTable">
-                        <thead id="dbTableHead"></thead>
-                        <tbody id="dbTableBody"></tbody>
-                    </table>
-                </div>
-                <div class="db-pager">
-                    <span id="dbPagerInfo" class="db-row-count">—</span>
-                    <div style="display:flex;gap:6px;align-items:center">
-                        <button class="btn btn-sm btn-outline" id="dbBtnPrev" disabled>&larr; Anterior</button>
-                        <button class="btn btn-sm btn-outline" id="dbBtnNext" disabled>Próxima &rarr;</button>
-                    </div>
-                </div>
-            </div>
-        </div><!-- /tabDbviewer -->
     </div>
 
     <!-- MAP -->
@@ -850,7 +837,35 @@
     </div>
 </div>
 
-<!-- DB Viewer Modal -->
+<!-- DB VIEWER FULLSCREEN OVERLAY -->
+<div class="db-fullscreen" id="dbFullscreen">
+    <div class="db-topbar">
+        <button class="btn btn-sm btn-outline" id="dbBtnClose">✕ Fechar</button>
+        <select id="dbTableSelect"><option value="">Selecione tabela...</option></select>
+        <input type="text" id="dbSearchInput" placeholder="Buscar..." />
+        <button class="btn btn-sm btn-primary" id="dbBtnSearch">Buscar</button>
+        <button class="btn btn-sm btn-success" id="dbBtnCreate">+ Novo</button>
+        <button class="btn btn-sm btn-outline" id="dbBtnRefresh">↻</button>
+        <div class="spacer"></div>
+        <button class="btn btn-sm db-btn-danger" id="dbBtnTruncate">🗑️ Limpar tabela</button>
+    </div>
+    <div class="db-scroll">
+        <table class="db-table" id="dbTable">
+            <thead id="dbTableHead"></thead>
+            <tbody id="dbTableBody"></tbody>
+        </table>
+    </div>
+    <div class="db-pager">
+        <span id="dbPagerInfo">—</span>
+        <div style="display:flex;gap:6px;align-items:center">
+            <button class="btn btn-sm btn-outline" id="dbBtnPrev" disabled>← Anterior</button>
+            <button class="btn btn-sm btn-outline" id="dbBtnNext" disabled>Próxima →</button>
+        </div>
+    </div>
+</div>
+
+<!-- DB Row Edit/Create Modal -->
+<div class="db-modal-overlay" id="dbModal">
 <div class="db-modal-overlay" id="dbModal">
     <div class="db-modal">
         <h3 id="dbModalTitle">Editar Registro</h3>
@@ -1457,20 +1472,16 @@ document.addEventListener('click', e => {
     if (wrap && !wrap.contains(e.target)) searchDropdown.classList.remove('show');
 });
 
-// ── DB VIEWER TOPBAR BUTTON ───────────────────────────────
+// ── DB VIEWER FULLSCREEN ──────────────────────────────────
 document.getElementById('btnDbViewer')?.addEventListener('click', () => {
-    // Deactivate sidebar tabs and show DB viewer tab
-    document.querySelectorAll('.sidebar-tab').forEach(t => t.classList.remove('active'));
-    document.querySelectorAll('.sidebar-tab-content').forEach(c => c.style.display = 'none');
-    const dbTab = document.getElementById('tabDbviewer');
-    if (dbTab) dbTab.style.display = 'flex';
-
-    // Ensure sidebar is visible
-    const sidebar = document.getElementById('sidebar');
-    if (sidebar.classList.contains('collapsed')) sidebar.classList.remove('collapsed');
-
+    const overlay = document.getElementById('dbFullscreen');
+    overlay.classList.add('show');
     if (dbCurrentTable) dbLoadRows(dbCurrentTable);
     dbLoadTables();
+});
+
+document.getElementById('dbBtnClose')?.addEventListener('click', () => {
+    document.getElementById('dbFullscreen').classList.remove('show');
 });
 
 async function doSearch(q) {
@@ -1951,6 +1962,28 @@ document.getElementById('dbBtnPrev').addEventListener('click', () => {
 document.getElementById('dbBtnNext').addEventListener('click', () => {
     dbCurrentOffset += DB_PAGE_SIZE;
     if (dbCurrentTable) dbLoadRows(dbCurrentTable);
+});
+
+document.getElementById('dbBtnTruncate')?.addEventListener('click', () => {
+    if (!dbCurrentTable) { toast('Selecione uma tabela', 'warning'); return; }
+    const tableName = dbCurrentTable;
+    if (!confirm(`ATENÇÃO: Isso irá apagar TODOS os ${document.getElementById('dbPagerInfo').textContent} da tabela "${tableName}".\n\nEssa ação não pode ser desfeita. Confirmar?`)) return;
+    if (!confirm('Última confirmação: Deseja realmente prosseguir?')) return;
+
+    fetch(`${API}/api/db/${encodeURIComponent(tableName)}/truncate`, { method: 'DELETE' })
+        .then(res => {
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            toast('Tabela limpa com sucesso', 'success');
+            dbCurrentOffset = 0;
+            dbCurrentSearch = '';
+            document.getElementById('dbSearchInput').value = '';
+            dbLoadRows(tableName);
+            dbLoadTables();
+        })
+        .catch(err => {
+            console.error('Truncate error:', err);
+            toast('Erro ao limpar tabela', 'error');
+        });
 });
 
 // ── INIT ──────────────────────────────────────────────────

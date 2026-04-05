@@ -1,22 +1,22 @@
 """
 Router: Database Viewer (CRUD)
 -------------------------------
-Developer-facing CRUD interface to inspect and manipulate any table in the database.
+Developer-facing CRUD interface to inspect and manipulate any table.
 
 Endpoints
 ---------
-GET    /api/db/tables                          — list all tables
-GET    /api/db/{table}/columns                 — list columns of a table
-GET    /api/db/{table}/rows                    — paginated rows
-POST   /api/db/{table}/rows                    — create a row
-PUT    /api/db/{table}/rows/{id}               — update a row by PK
-DELETE /api/db/{table}/rows/{id}               — delete a row by PK
-GET    /api/db/{table}/detail/{id}             — get single row by PK
+GET    /api/db/tables                        — list all tables
+GET    /api/db/{table}/schema                — column details
+GET    /api/db/{table}/rows                  — paginated rows
+POST   /api/db/{table}/rows                  — create a row
+PUT    /api/db/{table}/rows/{id}             — update a row by PK
+DELETE /api/db/{table}/rows/{id}             — delete one row by PK
+DELETE /api/db/{table}/truncate              — delete all rows
+GET    /api/db/{table}/detail/{id}           — get single row by PK
 """
 
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query
-from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text, inspect
 import logging
@@ -28,11 +28,7 @@ logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/db", tags=["db-viewer"])
 
-# Table-to-model mapping
-TABLE_MODELS = {
-    "pontos": Ponto,
-}
-
+TABLE_MODELS = {"pontos": Ponto}
 VALID_TABLES = set(TABLE_MODELS.keys())
 
 
@@ -96,14 +92,13 @@ def get_rows(
     columns_result = text(f"PRAGMA table_info({table})")
     col_info = db.execute(columns_result).fetchall()
     col_names = [c[1] for c in col_info]
-    pk_col = "id"  # convention for all managed tables
+    pk_col = "id"
 
     base_query = f"SELECT * FROM `{table}`"
     params = {}
 
     where_clauses = []
     if search:
-        # Search in text columns (non-numeric)
         text_cols = [c[1] for c in col_info if c[2] in ("TEXT", "VARCHAR", "CHARACTER")]
         if text_cols:
             search_terms = [f"`{c}` LIKE :search" for c in text_cols]
@@ -147,24 +142,16 @@ def get_row(table: str, row_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/{table}/rows")
-def create_row(
-    table: str,
-    data: dict,
-    db: Session = Depends(get_db),
-):
+def create_row(table: str, data: dict, db: Session = Depends(get_db)):
     """Creates a new row in the specified table."""
     _safe_table(table)
-
-    # Validate columns exist
     col_info = db.execute(text(f"PRAGMA table_info({table})")).fetchall()
     valid_cols = {c[1] for c in col_info}
     unknown = set(data.keys()) - valid_cols - {"id"}
     if unknown:
         raise HTTPException(status_code=400, detail=f"Colunas invalidas: {sorted(unknown)}")
 
-    # Remove 'id' if present (auto-increment)
     data.pop("id", None)
-
     if not data:
         raise HTTPException(status_code=400, detail="Nenhum fornado fornecido")
 
@@ -175,10 +162,7 @@ def create_row(
     try:
         result = db.execute(text(sql), data)
         db.commit()
-        return {
-            "message": "Registro criado com sucesso",
-            "id": result.lastrowid,
-        }
+        return {"message": "Registro criado com sucesso", "id": result.lastrowid}
     except Exception as e:
         db.rollback()
         logger.exception("Error creating row in %s", table)
@@ -186,24 +170,16 @@ def create_row(
 
 
 @router.put("/{table}/rows/{row_id}")
-def update_row(
-    table: str,
-    row_id: int,
-    data: dict,
-    db: Session = Depends(get_db),
-):
+def update_row(table: str, row_id: int, data: dict, db: Session = Depends(get_db)):
     """Updates an existing row by ID."""
     _safe_table(table)
-
     col_info = db.execute(text(f"PRAGMA table_info({table})")).fetchall()
     valid_cols = {c[1] for c in col_info}
     unknown = set(data.keys()) - valid_cols - {"id"}
     if unknown:
         raise HTTPException(status_code=400, detail=f"Colunas invalidas: {sorted(unknown)}")
 
-    # Remove 'id' from data (can't change PK)
     data.pop("id", None)
-
     if not data:
         raise HTTPException(status_code=400, detail="Nenhum fornado fornecido")
 
@@ -241,3 +217,17 @@ def delete_row(table: str, row_id: int, db: Session = Depends(get_db)):
         db.rollback()
         logger.exception("Error deleting row %d from %s", row_id, table)
         raise HTTPException(status_code=500, detail=f"Erro ao excluir registro: {str(e)}")
+
+
+@router.delete("/{table}/truncate")
+def truncate_table(table: str, db: Session = Depends(get_db)):
+    """Deletes ALL rows from the specified table."""
+    _safe_table(table)
+    try:
+        db.execute(text(f"DELETE FROM `{table}`"))
+        db.commit()
+        return {"message": f"Tabela '{table}' limpa com sucesso"}
+    except Exception as e:
+        db.rollback()
+        logger.exception("Error truncating %s", table)
+        raise HTTPException(status_code=500, detail=f"Erro ao limpar tabela: {str(e)}")

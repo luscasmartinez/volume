@@ -406,7 +406,16 @@ def get_stats(db: Session = Depends(get_db)):
     by_tipo = [{"tipo": r[0] or "N/A", "qtd": r[1], "total_vol": r[2] or 0} for r in result]
     vol_fat_max_row = db.query(sqlfunc.max(Ponto.vol_fat)).filter(Ponto.vol_fat.isnot(None)).scalar()
     vol_fat_max = float(vol_fat_max_row) if vol_fat_max_row else 0
-    return {"total": total, "com_coords": com_coords, "by_tipo": by_tipo, "vol_fat_max": vol_fat_max}
+    total_vol_row = db.query(sqlfunc.sum(Ponto.vol_fat)).scalar()
+    total_valor_row = db.query(sqlfunc.sum(Ponto.sum_valor)).scalar()
+    return {
+        "total": total,
+        "com_coords": com_coords,
+        "by_tipo": by_tipo,
+        "vol_fat_max": vol_fat_max,
+        "total_vol": float(total_vol_row) if total_vol_row else 0,
+        "total_valor": float(total_valor_row) if total_valor_row else 0,
+    }
 
 
 @app.get("/api/buscar")
@@ -529,3 +538,23 @@ def ranking_grupos(
         "GROUP BY cod_grupo ORDER BY total_vol DESC LIMIT :limit"
     ), params).fetchall()
     return [{"cod_grupo": r[0], "qtd": r[1], "total_vol": r[2] or 0, "total_valor": r[3] or 0} for r in result]
+
+
+@app.get("/api/ranking/grupos/{grupo}/rotas")
+def ranking_grupo_rotas(
+    grupo: str,
+    db: Session = Depends(get_db),
+    limit: int = Query(10, le=50),
+    cidade: Optional[str] = Query(None),
+):
+    """Retorna as rotas de um cod_grupo ordenadas por volume e valor."""
+    cidade_filter = "AND cidade = :cidade" if cidade else ""
+    params: dict = {"grupo": grupo, "limit": limit}
+    if cidade:
+        params["cidade"] = cidade
+    result = db.execute(text(
+        f"SELECT cidade, rota, COUNT(*) as qtd, SUM(vol_fat) as total_vol, SUM(sum_valor) as total_valor "
+        f"FROM pontos WHERE cod_grupo = :grupo AND rota IS NOT NULL AND rota != '' {cidade_filter} "
+        "GROUP BY cidade, rota ORDER BY total_valor DESC LIMIT :limit"
+    ), params).fetchall()
+    return [{"cidade": r[0], "rota": r[1], "qtd": r[2], "total_vol": r[3] or 0, "total_valor": r[4] or 0} for r in result]

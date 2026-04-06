@@ -666,6 +666,47 @@
             scrollbar-color: #334155 transparent;
         }
 
+        /* ── KPI BAR ─────────────────────────────────────── */
+        .kpi-bar {
+            display: flex; gap: 10px; padding: 10px 16px;
+            background: #0a0f1e; border-bottom: 1px solid #1e293b;
+            flex-shrink: 0; flex-wrap: wrap;
+        }
+        .kpi-card {
+            flex: 1; min-width: 120px;
+            background: linear-gradient(135deg, #1e293b 0%, #162032 100%);
+            border: 1px solid #334155; border-left-width: 3px;
+            border-radius: 8px; padding: 8px 12px;
+            display: flex; flex-direction: column;
+        }
+        .kpi-label {
+            font-size: 9px; font-weight: 700; color: #64748b;
+            text-transform: uppercase; letter-spacing: 0.9px; margin-bottom: 4px;
+        }
+        .kpi-value { font-size: 18px; font-weight: 800; line-height: 1.2; }
+        .kpi-sub   { font-size: 9px; color: #475569; margin-top: 2px; }
+        .kpi-blue   { border-left-color: #3b82f6; } .kpi-blue   .kpi-value { color: #93c5fd; }
+        .kpi-green  { border-left-color: #10b981; } .kpi-green  .kpi-value { color: #6ee7b7; }
+        .kpi-cyan   { border-left-color: #38bdf8; } .kpi-cyan   .kpi-value { color: #7dd3fc; }
+        .kpi-purple { border-left-color: #a855f7; } .kpi-purple .kpi-value { color: #d8b4fe; }
+        .kpi-orange { border-left-color: #f59e0b; } .kpi-orange .kpi-value { color: #fcd34d; }
+
+        /* ── GRUPO EXPAND ────────────────────────────────── */
+        .grupo-item { flex-wrap: wrap; cursor: pointer; }
+        .grupo-item:hover { background: #1a2535; }
+        .grupo-rotas-sub {
+            width: 100%; background: #0a0f1e;
+            border-top: 1px solid #1e293b;
+        }
+        .grupo-rota-row {
+            display: flex; align-items: center; gap: 8px;
+            padding: 5px 12px 5px 32px; border-bottom: 1px solid #1a2535;
+        }
+        .grupo-rota-row:last-child { border-bottom: none; }
+        .grupo-rota-idx { font-size: 10px; color: #475569; min-width: 18px; }
+        .grupo-rota-name { font-size: 12px; color: #cbd5e1; font-weight: 600; }
+        .grupo-rota-meta { font-size: 10px; color: #64748b; margin-top: 1px; }
+
         /* ── TOP10 HOVER CARD ───────────────────────────────── */
         .top10-hover-card {
             position: fixed;
@@ -939,6 +980,34 @@
         <button class="btn btn-sm btn-primary" id="btnAtualizarTop10">↻ Atualizar</button>
         <div class="spacer"></div>
     </div>
+
+    <!-- KPI BAR -->
+    <div class="kpi-bar" id="painelKpiBar">
+        <div class="kpi-card kpi-blue">
+            <div class="kpi-label">Total Registros</div>
+            <div class="kpi-value" id="kpiTotal">—</div>
+        </div>
+        <div class="kpi-card kpi-green">
+            <div class="kpi-label">Com Localização</div>
+            <div class="kpi-value" id="kpiCoords">—</div>
+            <div class="kpi-sub" id="kpiCoordsPerc"></div>
+        </div>
+        <div class="kpi-card kpi-cyan">
+            <div class="kpi-label">Vol. Faturado Total</div>
+            <div class="kpi-value" id="kpiVolTotal">—</div>
+            <div class="kpi-sub">m³</div>
+        </div>
+        <div class="kpi-card kpi-purple">
+            <div class="kpi-label">Valor Total</div>
+            <div class="kpi-value" id="kpiValorTotal">—</div>
+        </div>
+        <div class="kpi-card kpi-orange">
+            <div class="kpi-label">Maior Vol. Individual</div>
+            <div class="kpi-value" id="kpiVolMax">—</div>
+            <div class="kpi-sub">m³</div>
+        </div>
+    </div>
+
     <div class="painel-columns">
 
         <!-- COLUNA 1: TOP CLIENTES -->
@@ -1815,16 +1884,136 @@ async function loadPainelGrupos() {
         const res = await fetch(`${API}/api/ranking/grupos?limit=100`);
         if (!res.ok) throw new Error();
         painelGruposData = await res.json();
-        renderPainelList(painelGruposData, 'painelGruposList', 'cod_grupo', painelGruposMetric);
+        renderPainelGrupos(painelGruposData, painelGruposMetric);
     } catch {
         el.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-size:12px">Erro ao carregar ranking de grupos</div>';
     }
+}
+
+function renderPainelGrupos(data, metric) {
+    const container = document.getElementById('painelGruposList');
+    if (!container) return;
+    if (!data || data.length === 0) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Nenhum dado disponível</div>';
+        return;
+    }
+    const sorted = [...data].sort((a, b) => {
+        const va = metric === 'valor' ? (a.total_valor || 0) : (a.total_vol || 0);
+        const vb = metric === 'valor' ? (b.total_valor || 0) : (b.total_vol || 0);
+        return vb - va;
+    });
+    container.innerHTML = '';
+    const ul = document.createElement('ul');
+    ul.className = 'ranking-list';
+    sorted.forEach((item, idx) => {
+        const pos = idx + 1;
+        const posClass = pos === 1 ? 'gold' : pos === 2 ? 'silver' : pos === 3 ? 'bronze' : '';
+        const volFmt   = item.total_vol   != null ? Number(item.total_vol).toLocaleString('pt-BR',  { maximumFractionDigits: 1 }) + ' m³' : '—';
+        const valorFmt = item.total_valor != null ? 'R$ ' + Number(item.total_valor).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) : '—';
+
+        const li = document.createElement('li');
+        li.className = 'ranking-item grupo-item';
+
+        const mainRow = document.createElement('div');
+        mainRow.style.cssText = 'display:flex;align-items:center;gap:0;width:100%';
+        mainRow.innerHTML = `
+            <div class="ranking-pos ${posClass}">#${pos}</div>
+            <div class="ranking-info" style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;justify-content:space-between">
+                    <div class="ranking-name" title="${esc(item.cod_grupo) || '—'}">${esc(item.cod_grupo) || '—'}</div>
+                    <span class="grupo-expand-icon" style="font-size:10px;color:#38bdf8;padding:0 8px;flex-shrink:0">▶</span>
+                </div>
+                <div class="ranking-meta">${item.qtd || 0} reg · 🌊 ${volFmt}</div>
+                <div class="ranking-meta" style="color:#10b981;margin-top:1px">💰 ${valorFmt}</div>
+            </div>`;
+
+        const subDiv = document.createElement('div');
+        subDiv.className = 'grupo-rotas-sub';
+        subDiv.style.display = 'none';
+        subDiv.dataset.loaded = 'false';
+
+        li.appendChild(mainRow);
+        li.appendChild(subDiv);
+        li.addEventListener('click', () => toggleGrupoRotas(li, subDiv, item.cod_grupo, metric));
+        ul.appendChild(li);
+    });
+    container.appendChild(ul);
+}
+
+async function toggleGrupoRotas(li, subDiv, grupo, metric) {
+    const icon = li.querySelector('.grupo-expand-icon');
+    if (subDiv.style.display !== 'none') {
+        subDiv.style.display = 'none';
+        if (icon) icon.textContent = '▶';
+        return;
+    }
+    subDiv.style.display = 'block';
+    if (icon) icon.textContent = '▼';
+    if (subDiv.dataset.loaded === 'false') {
+        subDiv.innerHTML = '<div style="padding:8px 12px 8px 32px;font-size:11px;color:#64748b">Carregando rotas...</div>';
+        try {
+            const res = await fetch(`${API}/api/ranking/grupos/${encodeURIComponent(grupo)}/rotas?limit=10`);
+            if (!res.ok) throw new Error();
+            const rotas = await res.json();
+            subDiv.dataset.loaded = 'true';
+            subDiv._rotasData = rotas;
+            renderGrupoRotas(subDiv, rotas, painelGruposMetric);
+        } catch {
+            subDiv.innerHTML = '<div style="padding:8px 12px 8px 32px;font-size:11px;color:#ef4444">Erro ao carregar rotas</div>';
+        }
+    } else if (subDiv._rotasData) {
+        renderGrupoRotas(subDiv, subDiv._rotasData, painelGruposMetric);
+    }
+}
+
+function renderGrupoRotas(container, rotas, metric) {
+    if (!rotas || rotas.length === 0) {
+        container.innerHTML = '<div style="padding:8px 12px 8px 32px;font-size:11px;color:#64748b">Nenhuma rota encontrada</div>';
+        return;
+    }
+    const sorted = [...rotas].sort((a, b) => {
+        const va = metric === 'vol' ? (a.total_vol || 0) : (a.total_valor || 0);
+        const vb = metric === 'vol' ? (b.total_vol || 0) : (b.total_valor || 0);
+        return vb - va;
+    });
+    container.innerHTML = sorted.map((r, i) => {
+        const volFmt   = Number(r.total_vol   || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' m³';
+        const valorFmt = 'R$ ' + Number(r.total_valor || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+        const isTop = i === 0;
+        return `<div class="grupo-rota-row" ${isTop ? 'style="background:#0d1a2e"' : ''}>
+            <span class="grupo-rota-idx" style="${isTop ? 'color:#f59e0b;font-weight:700' : ''}">${i + 1}.</span>
+            <div style="flex:1;min-width:0">
+                <div style="display:flex;align-items:center;gap:6px">
+                    <span class="grupo-rota-name">${esc(r.rota) || '—'}</span>
+                    <span style="font-size:9px;background:#1e293b;border:1px solid #334155;border-radius:4px;padding:1px 5px;color:#94a3b8;flex-shrink:0">${esc(r.cidade) || '—'}</span>
+                </div>
+                <div class="grupo-rota-meta">${r.qtd} reg · 🌊 ${volFmt} · 💰 ${valorFmt}</div>
+            </div>
+        </div>`;
+    }).join('');
+}
+
+async function loadPainelKpis() {
+    try {
+        const res = await fetch(`${API}/api/stats`);
+        if (!res.ok) return;
+        const d = await res.json();
+        const fmt = (n, dec = 0) => Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: dec });
+        document.getElementById('kpiTotal').textContent       = fmt(d.total);
+        document.getElementById('kpiCoords').textContent      = fmt(d.com_coords);
+        const perc = d.total > 0 ? ((d.com_coords / d.total) * 100).toFixed(1) : '0.0';
+        document.getElementById('kpiCoordsPerc').textContent  = perc + '% do total';
+        document.getElementById('kpiVolTotal').textContent    = fmt(d.total_vol, 0);
+        document.getElementById('kpiValorTotal').textContent  = 'R$ ' + fmt(d.total_valor, 0);
+        document.getElementById('kpiVolMax').textContent      = fmt(d.vol_fat_max, 1);
+    } catch { /* silently ignore */ }
 }
 
 function loadPainel() {
     loadTop10();
     loadPainelRotas();
     loadPainelGrupos();
+    loadPainelKpis();
 }
 
 // ── PAINEL FULLSCREEN OPEN/CLOSE ──────────────────────────
@@ -1860,13 +2049,13 @@ document.getElementById('gruposMetricVol')?.addEventListener('click', function (
     painelGruposMetric = 'vol';
     this.classList.add('active');
     document.getElementById('gruposMetricValor').classList.remove('active');
-    renderPainelList(painelGruposData, 'painelGruposList', 'cod_grupo', 'vol');
+    renderPainelGrupos(painelGruposData, 'vol');
 });
 document.getElementById('gruposMetricValor')?.addEventListener('click', function () {
     painelGruposMetric = 'valor';
     this.classList.add('active');
     document.getElementById('gruposMetricVol').classList.remove('active');
-    renderPainelList(painelGruposData, 'painelGruposList', 'cod_grupo', 'valor');
+    renderPainelGrupos(painelGruposData, 'valor');
 });
 
 // ── TOP10 HOVER CARD ──────────────────────────────────────

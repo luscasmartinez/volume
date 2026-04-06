@@ -361,17 +361,35 @@ def get_heatmap(
 
 
 @app.get("/api/filtros")
-def get_filtros(db: Session = Depends(get_db), cidade: Optional[str] = Query(None)):
-    """Returns unique values for filter dropdowns. If cidade is provided, restricts dependent fields to that city."""
-    base = db.query(Ponto)
-    if cidade:
-        base = base.filter(Ponto.cidade == cidade)
-    tipos = [r[0] for r in base.with_entities(Ponto.tipo_faturamento).distinct().all() if r[0]]
-    cidades = [r[0] for r in db.query(Ponto.cidade).distinct().order_by(Ponto.cidade).all() if r[0]]  # always full list
-    macros = [r[0] for r in base.with_entities(Ponto.macro).distinct().order_by(Ponto.macro).all() if r[0]]
-    grupos = [r[0] for r in base.with_entities(Ponto.cod_grupo).distinct().order_by(Ponto.cod_grupo).all() if r[0]]
-    gc_values = [r[0] for r in base.with_entities(Ponto.gc).distinct().all() if r[0]]
-    rotas = [r[0] for r in base.with_entities(Ponto.rota).distinct().order_by(Ponto.rota).all() if r[0]]
+def get_filtros(
+    db: Session = Depends(get_db),
+    cidade: Optional[str] = Query(None),
+    tipo_faturamento: Optional[str] = Query(None),
+    macro: Optional[str] = Query(None),
+    grupo: Optional[str] = Query(None),
+    rota: Optional[str] = Query(None),
+):
+    """Returns unique values for filter dropdowns, restricted to existing combinations of selected filters."""
+    # cidades are always the full list (top-level anchor)
+    cidades = [r[0] for r in db.query(Ponto.cidade).distinct().order_by(Ponto.cidade).all() if r[0]]
+
+    # For each field we compute its distinct values under ALL OTHER active filters.
+    # This way each dropdown shows only what's reachable given the rest of the selection.
+    def _q(exclude: str):
+        """Base query with all active filters EXCEPT the excluded field."""
+        q = db.query(Ponto)
+        if exclude != 'cidade'         and cidade:           q = q.filter(Ponto.cidade == cidade)
+        if exclude != 'tipo_faturamento' and tipo_faturamento: q = q.filter(Ponto.tipo_faturamento == tipo_faturamento)
+        if exclude != 'macro'           and macro:            q = q.filter(Ponto.macro == macro)
+        if exclude != 'grupo'           and grupo:            q = q.filter(Ponto.cod_grupo == grupo)
+        if exclude != 'rota'            and rota:             q = q.filter(Ponto.rota == rota)
+        return q
+
+    tipos     = [r[0] for r in _q('tipo_faturamento').with_entities(Ponto.tipo_faturamento).distinct().all() if r[0]]
+    macros    = [r[0] for r in _q('macro').with_entities(Ponto.macro).distinct().order_by(Ponto.macro).all() if r[0]]
+    grupos    = [r[0] for r in _q('grupo').with_entities(Ponto.cod_grupo).distinct().order_by(Ponto.cod_grupo).all() if r[0]]
+    rotas     = [r[0] for r in _q('rota').with_entities(Ponto.rota).distinct().order_by(Ponto.rota).all() if r[0]]
+    gc_values = [r[0] for r in _q('gc').with_entities(Ponto.gc).distinct().all() if r[0]]
     return {"tipos_faturamento": tipos, "cidades": cidades, "macros": macros, "grupos": grupos, "gc_values": gc_values, "rotas": rotas}
 
 

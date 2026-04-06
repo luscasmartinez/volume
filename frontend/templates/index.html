@@ -1539,23 +1539,39 @@ document.getElementById('btnResetFilters').addEventListener('click', () => {
     loadPontos();
 });
 
-// ── CASCADING CITY FILTER ─────────────────────────────────
-document.getElementById('filtroCidade').addEventListener('change', async function () {
-    const cidade = this.value;
-    const qs = cidade ? `?cidade=${encodeURIComponent(cidade)}` : '';
+// ── CASCADING FILTERS ───────────────────────────────────────────
+async function refreshFilters(changedField) {
+    const params = new URLSearchParams();
+    const cidade = document.getElementById('filtroCidade').value;
+    const tipo   = document.getElementById('filtroTipo').value;
+    const macro  = document.getElementById('filtroMacro').value;
+    const grupo  = document.getElementById('filtroGrupo').value;
+    const rota   = document.getElementById('filtroRota').value;
+    if (cidade) params.append('cidade', cidade);
+    if (tipo)   params.append('tipo_faturamento', tipo);
+    if (macro)  params.append('macro', macro);
+    if (grupo)  params.append('grupo', grupo);
+    if (rota)   params.append('rota', rota);
     try {
-        const res = await fetch(`${API}/api/filtros${qs}`);
+        const res = await fetch(`${API}/api/filtros?${params}`);
         if (!res.ok) return;
         const data = await res.json();
-        populateSelect('filtroTipo',  data.tipos_faturamento);
-        populateSelect('filtroMacro', data.macros, 'Todas');
-        populateSelect('filtroGrupo', data.grupos || [], 'Todos');
-        populateSelect('filtroRota',  data.rotas  || [], 'Todas');
-        // filtroGC keeps fixed SIM/NÃO options
+        // Update every field except the one that just changed
+        if (changedField !== 'tipo')   populateSelect('filtroTipo',  data.tipos_faturamento);
+        if (changedField !== 'macro')  populateSelect('filtroMacro', data.macros, 'Todas');
+        if (changedField !== 'grupo')  populateSelect('filtroGrupo', data.grupos || [], 'Todos');
+        if (changedField !== 'rota')   populateSelect('filtroRota',  data.rotas  || [], 'Todas');
+        // cidade always keeps the full list (never restricted)
     } catch (err) {
         console.error('Cascade filter error:', err);
     }
-});
+}
+
+document.getElementById('filtroCidade').addEventListener('change', () => refreshFilters('cidade'));
+document.getElementById('filtroTipo').addEventListener('change',   () => refreshFilters('tipo'));
+document.getElementById('filtroMacro').addEventListener('change',  () => refreshFilters('macro'));
+document.getElementById('filtroGrupo').addEventListener('change',  () => refreshFilters('grupo'));
+document.getElementById('filtroRota').addEventListener('change',   () => refreshFilters('rota'));
 
 document.getElementById('maxPontos')?.addEventListener('input', function () {
     document.getElementById('maxPontosVal').textContent = Number(this.value).toLocaleString('pt-BR');

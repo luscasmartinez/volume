@@ -665,6 +665,39 @@
             flex: 1; overflow-y: auto; scrollbar-width: thin;
             scrollbar-color: #334155 transparent;
         }
+
+        /* ── TOP10 HOVER CARD ───────────────────────────────── */
+        .top10-hover-card {
+            position: fixed;
+            background: #1e293b;
+            border: 1px solid #38bdf8;
+            border-radius: 12px;
+            padding: 14px 16px;
+            min-width: 240px;
+            max-width: 300px;
+            box-shadow: 0 8px 32px rgba(0,0,0,.6);
+            z-index: 9995;
+            pointer-events: none;
+            opacity: 0;
+            transform: translateY(6px);
+            transition: opacity .15s ease, transform .15s ease;
+        }
+        .top10-hover-card.show {
+            opacity: 1;
+            transform: translateY(0);
+        }
+        .top10-hover-card h4 {
+            font-size: 13px; font-weight: 700; color: #f1f5f9; margin-bottom: 10px;
+            white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+        }
+        .hc-row {
+            display: flex; justify-content: space-between;
+            font-size: 11px; padding: 3px 0;
+            border-bottom: 1px solid #2d3f55;
+        }
+        .hc-row:last-child { border-bottom: none; }
+        .hc-row .k { color: #64748b; }
+        .hc-row .v { color: #e2e8f0; font-weight: 500; text-align: right; }
     </style>
 </head>
 <body>
@@ -954,6 +987,9 @@
 
     </div>
 </div>
+
+<!-- TOP10 HOVER CARD -->
+<div class="top10-hover-card" id="top10HoverCard"></div>
 
 <!-- DB VIEWER FULLSCREEN OVERLAY -->
 <div class="db-fullscreen" id="dbFullscreen">
@@ -1833,6 +1869,43 @@ document.getElementById('gruposMetricValor')?.addEventListener('click', function
     renderPainelList(painelGruposData, 'painelGruposList', 'cod_grupo', 'valor');
 });
 
+// ── TOP10 HOVER CARD ──────────────────────────────────────
+const _hoverCard = document.getElementById('top10HoverCard');
+
+function showTop10Card(e, client, cidadeNome) {
+    const fmtVol   = client.total_vol   != null ? Number(client.total_vol).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' m³' : '—';
+    const fmtValor = client.total_valor != null ? 'R$ ' + Number(client.total_valor).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) : '—';
+    const rows = [
+        ['Nº Ligação', client.num_ligacao || '—'],
+        ['Cidade',     client.cidade || cidadeNome || '—'],
+        ['Categoria',  client.categoria || '—'],
+        ['Macro',      client.macro || '—'],
+        ['Micro',      client.micro || '—'],
+        ['Vol. Fat.',  fmtVol],
+        ['Valor Total', fmtValor],
+    ].map(([k, v]) => `<div class="hc-row"><span class="k">${esc(k)}</span><span class="v">${esc(String(v))}</span></div>`).join('');
+    _hoverCard.innerHTML = `<h4>💧 ${esc(client.nom_cliente) || '—'}</h4>${rows}`;
+    positionTop10Card(e);
+    _hoverCard.classList.add('show');
+}
+
+function positionTop10Card(e) {
+    const card = _hoverCard;
+    const vw = window.innerWidth, vh = window.innerHeight;
+    const cw = card.offsetWidth || 260, ch = card.offsetHeight || 200;
+    const margin = 14;
+    let x = e.clientX + margin;
+    let y = e.clientY + margin;
+    if (x + cw > vw - margin) x = e.clientX - cw - margin;
+    if (y + ch > vh - margin) y = e.clientY - ch - margin;
+    card.style.left = x + 'px';
+    card.style.top  = y + 'px';
+}
+
+function hideTop10Card() {
+    _hoverCard.classList.remove('show');
+}
+
 // ── FLY TO POINT ──────────────────────────────────────────
 let tempHighlightMarker = null;
 
@@ -1929,23 +2002,9 @@ function renderTop10(data) {
                 <div class="top10-valor">${fmtBRL(client.total_valor)}</div>`;
 
             if (hasCoord) {
-                item.addEventListener('click', () => flyToPoint({
-                    id:              null,
-                    lat:             client.lat,
-                    lng:             client.lng,
-                    nom_cliente:     client.nom_cliente,
-                    num_ligacao:     client.num_ligacao,
-                    cidade:          client.cidade || cidadeData.cidade,
-                    tipo_faturamento: null,
-                    is_grande:       null,
-                    vol_fat:         client.total_vol,
-                    sum_valor:       client.total_valor,
-                    macro:           client.macro,
-                    micro:           client.micro,
-                    referencia:      null,
-                    sit_ligacao:     null,
-                    categoria:       client.categoria,
-                }));
+                item.addEventListener('mouseenter', (e) => showTop10Card(e, client, cidadeData.cidade));
+                item.addEventListener('mousemove',  (e) => positionTop10Card(e));
+                item.addEventListener('mouseleave', ()  => hideTop10Card());
             }
             container.appendChild(item);
         });

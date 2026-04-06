@@ -111,6 +111,11 @@ COLUMN_MAP = {
     "VOL_FAT__AGUAS_FAT_": "vol_fat",
     "VOL_FAT__AGUAS_FAT": "vol_fat",
     "VOL_FAT": "vol_fat",
+    # GC filter (column: GC, values "SIM" / "NÃO")
+    "GC": "gc",
+    "GRANDE_CONSUMIDOR": "gc",
+    # Rota
+    "ROTA": "rota",
 }
 
 
@@ -218,11 +223,11 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
                 "INSERT INTO pontos (num_ligacao, nom_cliente, categoria, cod_grupo, num_medidor, "
                 "tipo_faturamento, cidade, macro, micro, referencia, sit_ligacao, is_grande, "
                 "cod_latitude, cod_longitude, sum_valor, valor_d1, valor_d2, valor_in1, valor_in2, "
-                "valor_a, qtd_eco1, qtd_eco2, vol_fat)"
+                "valor_a, qtd_eco1, qtd_eco2, vol_fat, gc, rota)"
                 " VALUES (:num_ligacao, :nom_cliente, :categoria, :cod_grupo, :num_medidor, "
                 ":tipo_faturamento, :cidade, :macro, :micro, :referencia, :sit_ligacao, :is_grande, "
                 ":cod_latitude, :cod_longitude, :sum_valor, :valor_d1, :valor_d2, :valor_in1, :valor_in2, "
-                ":valor_a, :qtd_eco1, :qtd_eco2, :vol_fat)"
+                ":valor_a, :qtd_eco1, :qtd_eco2, :vol_fat, :gc, :rota)"
             ), records)
             db.commit()
     except Exception as e:
@@ -269,7 +274,9 @@ def get_pontos(
     tipo_faturamento: Optional[str] = Query(None),
     cidade: Optional[str] = Query(None),
     macro: Optional[str] = Query(None),
-    gc: Optional[str] = Query(None),  # "SIM" | "NAO"
+    grupo: Optional[str] = Query(None),
+    rota: Optional[str] = Query(None),
+    gc: Optional[str] = Query(None),  # "SIM" | "NAO" for gc column
     limit: int = Query(30000, le=100000),
     offset: int = Query(0),
 ):
@@ -283,12 +290,14 @@ def get_pontos(
         query = query.filter(Ponto.cidade == cidade)
     if macro:
         query = query.filter(Ponto.macro == macro)
+    if grupo:
+        query = query.filter(Ponto.cod_grupo == grupo)
+    if rota:
+        query = query.filter(Ponto.rota == rota)
     if gc == "SIM":
-        query = query.filter(Ponto.is_grande.ilike("SIM"))
+        query = query.filter(Ponto.gc.ilike("SIM"))
     elif gc == "NAO":
-        query = query.filter(
-            (Ponto.is_grande == None) | (~Ponto.is_grande.ilike("SIM"))
-        )
+        query = query.filter(~Ponto.gc.ilike("SIM"))
 
     total = query.count()
     pontos = query.offset(offset).limit(limit).all()
@@ -305,11 +314,14 @@ def get_pontos(
                 "cidade": p.cidade,
                 "macro": p.macro,
                 "micro": p.micro,
+                "rota": p.rota,
                 "referencia": p.referencia,
                 "sit_ligacao": p.sit_ligacao,
                 "vol_fat": p.vol_fat,
                 "num_ligacao": p.num_ligacao,
                 "categoria": p.categoria,
+                "cod_grupo": p.cod_grupo,
+                "gc": p.gc,
                 "is_grande": p.is_grande,
                 "sum_valor": p.sum_valor,
             }
@@ -354,7 +366,10 @@ def get_filtros(db: Session = Depends(get_db)):
     tipos = [r[0] for r in db.query(Ponto.tipo_faturamento).distinct().all() if r[0]]
     cidades = [r[0] for r in db.query(Ponto.cidade).distinct().order_by(Ponto.cidade).all() if r[0]]
     macros = [r[0] for r in db.query(Ponto.macro).distinct().order_by(Ponto.macro).all() if r[0]]
-    return {"tipos_faturamento": tipos, "cidades": cidades, "macros": macros}
+    grupos = [r[0] for r in db.query(Ponto.cod_grupo).distinct().order_by(Ponto.cod_grupo).all() if r[0]]
+    gc_values = [r[0] for r in db.query(Ponto.gc).distinct().all() if r[0]]
+    rotas = [r[0] for r in db.query(Ponto.rota).distinct().order_by(Ponto.rota).all() if r[0]]
+    return {"tipos_faturamento": tipos, "cidades": cidades, "macros": macros, "grupos": grupos, "gc_values": gc_values, "rotas": rotas}
 
 
 @app.get("/api/stats")
@@ -455,3 +470,31 @@ def get_ranking(
         }
         for p in pontos
     ]
+
+
+@app.get("/api/ranking/rotas")
+def ranking_rotas(
+    db: Session = Depends(get_db),
+    limit: int = Query(50, le=200),
+):
+    """Retorna rotas ordenadas por volume total."""
+    result = db.execute(text(
+        "SELECT rota, COUNT(*) as qtd, SUM(vol_fat) as total_vol "
+        "FROM pontos WHERE rota IS NOT NULL AND rota != '' "
+        "GROUP BY rota ORDER BY total_vol DESC LIMIT :limit"
+    ), {"limit": limit}).fetchall()
+    return [{"rota": r[0], "qtd": r[1], "total_vol": r[2] or 0} for r in result]
+
+
+@app.get("/api/ranking/grupos")
+def ranking_grupos(
+    db: Session = Depends(get_db),
+    limit: int = Query(50, le=200),
+):
+    """Retorna cod_grupos ordenados por volume total."""
+    result = db.execute(text(
+        "SELECT cod_grupo, COUNT(*) as qtd, SUM(vol_fat) as total_vol "
+        "FROM pontos WHERE cod_grupo IS NOT NULL AND cod_grupo != '' "
+        "GROUP BY cod_grupo ORDER BY total_vol DESC LIMIT :limit"
+    ), {"limit": limit}).fetchall()
+    return [{"cod_grupo": r[0], "qtd": r[1], "total_vol": r[2] or 0} for r in result]

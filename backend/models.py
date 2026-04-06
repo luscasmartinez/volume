@@ -37,3 +37,5 @@ class Ponto(Base):
     qtd_eco1 = Column(Float, nullable=True)
     qtd_eco2 = Column(Float, nullable=True)
     vol_fat = Column(Float, nullable=True)
+    gc = Column(String, nullable=True)
+    rota = Column(String, nullable=True)

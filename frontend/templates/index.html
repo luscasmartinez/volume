@@ -660,18 +660,24 @@
                     </select>
                 </div>
                 <div class="filter-group">
+                    <label>Grupo</label>
+                    <select id="filtroGrupo">
+                        <option value="">Todos</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Rota</label>
+                    <select id="filtroRota">
+                        <option value="">Todas</option>
+                    </select>
+                </div>
+                <div class="filter-group">
                     <label>Grande Consumidor (GC)</label>
-                    <div style="display:flex;gap:12px;margin-top:6px;flex-wrap:wrap">
-                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px">
-                            <input type="radio" name="gcFilter" value="" checked style="accent-color:#3b82f6"> Todos
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px">
-                            <input type="radio" name="gcFilter" value="SIM" style="accent-color:#d4af37"> Somente GC
-                        </label>
-                        <label style="display:flex;align-items:center;gap:4px;cursor:pointer;font-size:13px">
-                            <input type="radio" name="gcFilter" value="NAO" style="accent-color:#3b82f6"> Excluir GC
-                        </label>
-                    </div>
+                    <select id="filtroGC">
+                        <option value="">Ambos</option>
+                        <option value="SIM">SIM</option>
+                        <option value="NÃO">NÃO</option>
+                    </select>
                 </div>
                 <div class="filter-group">
                     <label>Máx. pontos: <strong id="maxPontosVal">30.000</strong></label>
@@ -774,21 +780,24 @@
         </div><!-- /tabFiltros -->
 
         <div class="sidebar-tab-content" id="tabRanking" style="display:none">
-            <div class="ranking-controls">
-                <select id="rankingCidade">
-                    <option value="">Todas as cidades</option>
-                </select>
-                <select id="rankingLimit" style="max-width:90px">
-                    <option value="20">Top 20</option>
-                    <option value="50" selected>Top 50</option>
-                    <option value="100">Top 100</option>
-                </select>
-                <button class="btn btn-primary btn-sm" id="btnAtualizarRanking" title="Atualizar ranking">↻</button>
+            <!-- Sub-tabs for ranking -->
+            <div style="display:flex;border-bottom:1px solid #334155;flex-shrink:0;background:#1e293b">
+                <button class="sidebar-tab active ranking-sub active" data-rank="rotas" style="font-size:11px;padding:8px 0">Rotas</button>
+                <button class="sidebar-tab ranking-sub" data-rank="grupos" style="font-size:11px;padding:8px 0">Grupos</button>
             </div>
-            <div class="sidebar-scroll">
-                <div id="rankingList">
-                    <div style="padding:20px;text-align:center;color:#64748b;font-size:12px">
-                        Carregue dados para ver o ranking
+            <!-- Ranking Rotas -->
+            <div id="rankingRotas">
+                <div class="sidebar-scroll">
+                    <div id="rankingRotasList">
+                        <div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Carregue dados para ver ranking de rotas</div>
+                    </div>
+                </div>
+            </div>
+            <!-- Ranking Grupos -->
+            <div id="rankingGrupos" style="display:none">
+                <div class="sidebar-scroll">
+                    <div id="rankingGruposList">
+                        <div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Carregue dados para ver ranking de grupos</div>
                     </div>
                 </div>
             </div>
@@ -1063,24 +1072,21 @@ async function loadFiltros() {
         const data = await res.json();
         populateSelect('filtroTipo', data.tipos_faturamento);
         populateSelect('filtroMacro', data.macros);
+        populateSelect('filtroGrupo', data.grupos || [], 'Todos');
+        populateSelect('filtroRota', data.rotas || [], 'Todas');
+        populateSelect('filtroGC', data.gc_values || [], 'Ambos');
         populateSelect('heatmapCidade', data.cidades, 'Todas as cidades');
-        populateSelect('rankingCidade', data.cidades, 'Todas as cidades');
-        populateSelect('top10Cidade',   data.cidades, 'Todas as cidades');
 
-        // Populate city select; keep existing selection or default to first city
+        // Populate city select; keep existing selection or default to all
         const cidadeSel = document.getElementById('filtroCidade');
         const currentCidade = cidadeSel.value;
         cidadeSel.innerHTML = '<option value="">Todas</option>';
-        data.cidades.forEach(v => {
+        (data.cidades || []).forEach(v => {
             const opt = document.createElement('option');
             opt.value = v; opt.textContent = v;
             cidadeSel.appendChild(opt);
         });
-        if (currentCidade) {
-            cidadeSel.value = currentCidade;
-        } else if (data.cidades.length > 0) {
-            cidadeSel.value = data.cidades[0];
-        }
+        if (currentCidade) cidadeSel.value = currentCidade;
     } catch (err) {
         console.error('Failed to load filters:', err);
     }
@@ -1172,11 +1178,15 @@ function buildParams() {
     const tipo   = document.getElementById('filtroTipo').value;
     const cidade = document.getElementById('filtroCidade').value;
     const macro  = document.getElementById('filtroMacro').value;
-    const gc     = document.querySelector('input[name="gcFilter"]:checked')?.value || '';
+    const grupo  = document.getElementById('filtroGrupo').value;
+    const rota   = document.getElementById('filtroRota').value;
+    const gc     = document.getElementById('filtroGC').value;
     const limit  = document.getElementById('maxPontos')?.value || '30000';
     if (tipo)   params.append('tipo_faturamento', tipo);
     if (cidade) params.append('cidade', cidade);
     if (macro)  params.append('macro', macro);
+    if (grupo)  params.append('grupo', grupo);
+    if (rota)   params.append('rota', rota);
     if (gc)     params.append('gc', gc);
     params.append('limit', limit);
     return params.toString();
@@ -1224,6 +1234,9 @@ function buildPopup(p) {
         </div>
         <div class="popup-row"><span class="key">Nº Ligação</span><span class="val">${esc(p.num_ligacao) || '—'}</span></div>
         <div class="popup-row"><span class="key">Cidade</span><span class="val">${esc(p.cidade) || '—'}</span></div>
+        <div class="popup-row"><span class="key">Grupo</span><span class="val">${esc(p.cod_grupo) || '—'}</span></div>
+        <div class="popup-row"><span class="key">Rota</span><span class="val">${esc(p.rota) || '—'}</span></div>
+        <div class="popup-row"><span class="key">GC</span><span class="val">${esc(p.gc) || esc(p.is_grande) || '—'}</span></div>
         <div class="popup-row"><span class="key">Macro</span><span class="val">${esc(p.macro) || '—'}</span></div>
         <div class="popup-row"><span class="key">Micro</span><span class="val">${esc(p.micro) || '—'}</span></div>
         <div class="popup-row"><span class="key">Referência</span><span class="val">${esc(p.referencia) || '—'}</span></div>
@@ -1231,7 +1244,6 @@ function buildPopup(p) {
         <div class="popup-row"><span class="key">Situação</span><span class="val">${esc(p.sit_ligacao) || '—'}</span></div>
         <div class="popup-row"><span class="key">Vol. Fat. (m³)</span><span class="val">${volFmt}</span></div>
         <div class="popup-row"><span class="key">Valor Total</span><span class="val">${sumFmt}</span></div>
-        <div class="popup-row"><span class="key">Grande Cons.</span><span class="val">${esc(p.is_grande) || '—'}</span></div>
         <div class="popup-row" style="border-top:1px solid #334155;margin-top:4px;padding-top:4px">
             <span class="key">Coords</span>
             <span class="val" style="font-size:10px">${Number(p.lat).toFixed(5)}, ${Number(p.lng).toFixed(5)}</span>
@@ -1246,11 +1258,15 @@ function updateStatusBar(visible, total) {
     const tipo   = document.getElementById('filtroTipo').value;
     const cidade  = document.getElementById('filtroCidade').value;
     const macro   = document.getElementById('filtroMacro').value;
-    const gc      = document.querySelector('input[name="gcFilter"]:checked')?.value || '';
+    const grupo   = document.getElementById('filtroGrupo').value;
+    const rota    = document.getElementById('filtroRota').value;
+    const gc      = document.getElementById('filtroGC').value;
     const parts = [];
     if (tipo)   parts.push(`Tipo: ${tipo}`);
     if (cidade) parts.push(`Cidade: ${cidade}`);
     if (macro)  parts.push(`Macro: ${macro}`);
+    if (grupo)  parts.push(`Grupo: ${grupo}`);
+    if (rota)   parts.push(`Rota: ${rota}`);
     if (gc)     parts.push(`GC: ${gc}`);
     document.getElementById('statusFiltro').textContent = parts.length ? parts.join(' | ') : 'Nenhum';
 }
@@ -1403,8 +1419,9 @@ document.getElementById('btnResetFilters').addEventListener('click', () => {
     document.getElementById('filtroTipo').value = '';
     document.getElementById('filtroCidade').value = '';
     document.getElementById('filtroMacro').value = '';
-    const gcDefault = document.querySelector('input[name="gcFilter"][value=""]');
-    if (gcDefault) gcDefault.checked = true;
+    document.getElementById('filtroGrupo').value = '';
+    document.getElementById('filtroRota').value = '';
+    document.getElementById('filtroGC').value = '';
     const slider = document.getElementById('maxPontos');
     if (slider) { slider.value = 30000; document.getElementById('maxPontosVal').textContent = '30.000'; }
     loadPontos();
@@ -1434,7 +1451,7 @@ document.querySelectorAll('.sidebar-tab').forEach(tab => {
         document.querySelectorAll('.sidebar-tab-content').forEach(c => c.style.display = 'none');
         const tabEl = document.getElementById('tab' + tabId.charAt(0).toUpperCase() + tabId.slice(1));
         if (tabEl) tabEl.style.display = 'flex';
-        if (tabId === 'ranking') loadRanking();
+        if (tabId === 'ranking') loadRankingRotas();
         if (tabId === 'top10')   loadTop10();
     });
 });
@@ -1521,63 +1538,76 @@ function renderSearchResults(results) {
     });
 }
 
-// ── RANKING ───────────────────────────────────────────────
-let rankingData = [];
+// ── RANKING ROTAS & GRUPOS ────────────────────────────────
 
-async function loadRanking() {
-    const rankingList = document.getElementById('rankingList');
-    if (!rankingList) return;
-    rankingList.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Carregando ranking...</div>';
-    const params = new URLSearchParams();
-    const rCidade = document.getElementById('rankingCidade')?.value || '';
-    const rLimit  = document.getElementById('rankingLimit')?.value  || '50';
-    if (rCidade) params.append('cidade', rCidade);
-    params.append('limit', rLimit);
-    try {
-        const res = await fetch(`${API}/api/ranking?${params}`);
-        if (!res.ok) throw new Error();
-        rankingData = await res.json();
-        renderRanking(rankingData);
-    } catch {
-        rankingList.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-size:12px">Erro ao carregar ranking</div>';
-    }
-}
-
-function renderRanking(data) {
-    const rankingList = document.getElementById('rankingList');
-    if (!rankingList) return;
+function renderRankingList(data, containerId, labelKey, onFly) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
     if (data.length === 0) {
-        rankingList.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Nenhum dado disponível</div>';
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Nenhum dado disponível</div>';
         return;
     }
-    rankingList.innerHTML = '';
+    container.innerHTML = '';
     const ul = document.createElement('ul');
     ul.className = 'ranking-list';
     data.forEach((item, idx) => {
-        const pos      = idx + 1;
+        const pos = idx + 1;
         const posClass = pos === 1 ? 'gold' : pos === 2 ? 'silver' : pos === 3 ? 'bronze' : '';
-        const volFmt   = item.vol_fat != null
-            ? Number(item.vol_fat).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' m³'
+        const volFmt = item.total_vol != null
+            ? Number(item.total_vol).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + ' m³'
             : '—';
         const li = document.createElement('li');
         li.className = 'ranking-item';
-        li.title = 'Clique para ver no mapa';
+        if (onFly) li.title = 'Clique para ver no mapa';
         li.innerHTML = `
             <div class="ranking-pos ${posClass}">#${pos}</div>
             <div class="ranking-info">
-                <div class="ranking-name" title="${esc(item.nom_cliente) || '—'}">${esc(item.nom_cliente) || '—'}</div>
-                <div class="ranking-meta">Nº ${esc(item.num_ligacao) || '—'} · ${esc(item.cidade) || '—'}</div>
+                <div class="ranking-name" title="${esc(item[labelKey]) || '—'}">${esc(item[labelKey]) || '—'}</div>
+                <div class="ranking-meta">${item.qtd || 0} registros</div>
             </div>
             <div class="ranking-vol">${volFmt}</div>`;
-        li.addEventListener('click', () => flyToPoint(item));
+        if (onFly) li.addEventListener('click', () => onFly(item));
         ul.appendChild(li);
     });
-    rankingList.appendChild(ul);
+    container.appendChild(ul);
 }
 
-document.getElementById('btnAtualizarRanking')?.addEventListener('click', () => loadRanking());
-document.getElementById('rankingCidade')?.addEventListener('change', () => loadRanking());
-document.getElementById('rankingLimit')?.addEventListener('change', () => loadRanking());
+async function loadRankingRotas() {
+    const el = document.getElementById('rankingRotasList');
+    if (!el) return;
+    try {
+        const res = await fetch(`${API}/api/ranking/rotas?limit=50`);
+        if (!res.ok) throw new Error();
+        renderRankingList(await res.json(), 'rankingRotasList', 'rota');
+    } catch {
+        el.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-size:12px">Erro ao carregar ranking</div>';
+    }
+}
+
+async function loadRankingGrupos() {
+    const el = document.getElementById('rankingGruposList');
+    if (!el) return;
+    try {
+        const res = await fetch(`${API}/api/ranking/grupos?limit=50`);
+        if (!res.ok) throw new Error();
+        renderRankingList(await res.json(), 'rankingGruposList', 'cod_grupo');
+    } catch {
+        el.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-size:12px">Erro ao carregar ranking</div>';
+    }
+}
+
+// Sub-tab switching for ranking
+document.querySelectorAll('.ranking-sub').forEach(tab => {
+    tab.addEventListener('click', function () {
+        document.querySelectorAll('.ranking-sub').forEach(t => t.classList.remove('active'));
+        this.classList.add('active');
+        const sub = this.dataset.rank;
+        document.getElementById('rankingRotas').style.display = sub === 'rotas' ? '' : 'none';
+        document.getElementById('rankingGrupos').style.display = sub === 'grupos' ? '' : 'none';
+        if (sub === 'rotas') loadRankingRotas();
+        if (sub === 'grupos') loadRankingGrupos();
+    });
+});
 
 // ── FLY TO POINT ──────────────────────────────────────────
 let tempHighlightMarker = null;

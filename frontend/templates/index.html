@@ -570,6 +570,101 @@
         .db-form-group input:focus { border-color: #3b82f6; }
         .db-modal-actions { display: flex; gap: 8px; margin-top: 14px; justify-content: flex-end; }
         .db-confirm { padding: 4px 6px; cursor: pointer; }
+
+        /* ── PAINEL SUB-TABS ─────────────────────────────── */
+        .panel-subtabs {
+            display: flex;
+            border-bottom: 1px solid #334155;
+            flex-shrink: 0;
+            background: #1a2535;
+        }
+        .panel-sub {
+            flex: 1;
+            padding: 8px 4px;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: inherit;
+            background: transparent;
+            border: none;
+            border-bottom: 2px solid transparent;
+            color: #64748b;
+            cursor: pointer;
+            transition: all .2s;
+            margin-bottom: -1px;
+        }
+        .panel-sub:hover { color: #94a3b8; }
+        .panel-sub.active { color: #38bdf8; border-bottom-color: #38bdf8; }
+
+        /* ── METRIC TOGGLE ───────────────────────────────── */
+        .metric-toggle-bar {
+            display: flex;
+            gap: 6px;
+            padding: 8px 12px;
+            border-bottom: 1px solid #334155;
+            flex-shrink: 0;
+            background: #1e293b;
+        }
+        .metric-btn {
+            flex: 1;
+            padding: 5px 8px;
+            font-size: 11px;
+            font-weight: 600;
+            font-family: inherit;
+            background: #0f172a;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            color: #64748b;
+            cursor: pointer;
+            transition: all .2s;
+        }
+        .metric-btn.active {
+            background: rgba(56,189,248,.15);
+            border-color: #38bdf8;
+            color: #38bdf8;
+        }
+        .metric-btn:hover:not(.active) { background: #1a2535; color: #94a3b8; }
+
+        /* ── PAINEL FULLSCREEN ──────────────────────────────── */
+        .painel-fullscreen {
+            position: fixed; inset: 0; z-index: 9990;
+            background: #0f172a; display: none; flex-direction: column;
+        }
+        .painel-fullscreen.show { display: flex; }
+        .painel-topbar {
+            display: flex; gap: 10px; align-items: center; flex-wrap: wrap;
+            padding: 12px 20px; border-bottom: 1px solid #334155;
+            background: #1e293b; flex-shrink: 0;
+        }
+        .painel-topbar h2 {
+            font-size: 15px; font-weight: 700; color: #f1f5f9;
+            display: flex; align-items: center; gap: 8px;
+        }
+        .painel-topbar select {
+            background: #0f172a; border: 1px solid #334155; border-radius: 6px;
+            color: #e2e8f0; padding: 6px 10px; font-size: 13px;
+            font-family: inherit; outline: none;
+        }
+        .painel-topbar .spacer { flex: 1; }
+        .painel-columns {
+            display: flex; flex: 1; overflow: hidden;
+        }
+        .painel-column {
+            flex: 1; display: flex; flex-direction: column;
+            border-right: 1px solid #334155; overflow: hidden; min-width: 0;
+        }
+        .painel-column:last-child { border-right: none; }
+        .painel-column-header {
+            padding: 12px 16px;
+            background: linear-gradient(135deg, #1e293b 0%, #1a2535 100%);
+            border-bottom: 1px solid #334155;
+            font-size: 13px; font-weight: 700; color: #38bdf8;
+            display: flex; align-items: center; justify-content: space-between;
+            flex-shrink: 0;
+        }
+        .painel-column-scroll {
+            flex: 1; overflow-y: auto; scrollbar-width: thin;
+            scrollbar-color: #334155 transparent;
+        }
     </style>
 </head>
 <body>
@@ -593,6 +688,7 @@
         <button class="btn btn-outline btn-sm" id="btnFitBounds">⊕ Ajustar mapa</button>
         <button class="btn btn-outline btn-sm" id="btnResetFilters">✕ Limpar filtros</button>
         <button class="btn btn-primary btn-sm" id="btnRefresh">↻ Atualizar</button>
+        <button class="btn btn-outline btn-sm" id="btnPainel">📊 Painel</button>
         <button class="btn btn-outline btn-sm" id="btnDbViewer">🛠️ BD</button>
     </div>
 </div>
@@ -602,12 +698,7 @@
 
     <!-- SIDEBAR -->
     <div class="sidebar" id="sidebar">
-        <div class="sidebar-tabs">
-            <button class="sidebar-tab active" data-tab="filtros">🔍 Filtros</button>
-            <button class="sidebar-tab" data-tab="ranking">📊 Ranking</button>
-            <button class="sidebar-tab" data-tab="top10">🏆 Top 10</button>
-        </div>
-        <div class="sidebar-tab-content" id="tabFiltros">
+        <div class="sidebar-tab-content" id="tabFiltros" style="display:flex">
         <div class="sidebar-scroll">
 
             <!-- Upload -->
@@ -779,52 +870,6 @@
         </div>
         </div><!-- /tabFiltros -->
 
-        <div class="sidebar-tab-content" id="tabRanking" style="display:none">
-            <!-- Sub-tabs for ranking -->
-            <div style="display:flex;border-bottom:1px solid #334155;flex-shrink:0;background:#1e293b">
-                <button class="sidebar-tab active ranking-sub active" data-rank="rotas" style="font-size:11px;padding:8px 0">Rotas</button>
-                <button class="sidebar-tab ranking-sub" data-rank="grupos" style="font-size:11px;padding:8px 0">Grupos</button>
-            </div>
-            <!-- Ranking Rotas -->
-            <div id="rankingRotas">
-                <div class="sidebar-scroll">
-                    <div id="rankingRotasList">
-                        <div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Carregue dados para ver ranking de rotas</div>
-                    </div>
-                </div>
-            </div>
-            <!-- Ranking Grupos -->
-            <div id="rankingGrupos" style="display:none">
-                <div class="sidebar-scroll">
-                    <div id="rankingGruposList">
-                        <div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Carregue dados para ver ranking de grupos</div>
-                    </div>
-                </div>
-            </div>
-        </div><!-- /tabRanking -->
-
-        <!-- ── TOP 10 POR CIDADE TAB ─────────────────────── -->
-        <div class="sidebar-tab-content" id="tabTop10" style="display:none">
-            <div class="top10-controls">
-                <select id="top10Cidade">
-                    <option value="">Todas as cidades</option>
-                </select>
-                <select id="top10TopN" style="max-width:80px">
-                    <option value="5">Top 5</option>
-                    <option value="10" selected>Top 10</option>
-                    <option value="20">Top 20</option>
-                </select>
-                <button class="btn btn-primary btn-sm" id="btnAtualizarTop10" title="Atualizar Top 10">↻</button>
-            </div>
-            <div class="sidebar-scroll">
-                <div id="top10List">
-                    <div style="padding:20px;text-align:center;color:#64748b;font-size:12px">
-                        Carregue dados para ver o Top 10
-                    </div>
-                </div>
-            </div>
-        </div><!-- /tabTop10 -->
-
     </div>
 
     <!-- MAP -->
@@ -843,6 +888,70 @@
             <div class="spinner"></div>
             <span id="loadingText">Carregando dados...</span>
         </div>
+    </div>
+</div>
+
+<!-- PAINEL FULLSCREEN OVERLAY -->
+<div class="painel-fullscreen" id="painelFullscreen">
+    <div class="painel-topbar">
+        <button class="btn btn-sm btn-outline" id="painelBtnClose">✕ Fechar</button>
+        <h2>📊 Painel Analytics</h2>
+        <select id="top10Cidade"><option value="">Todas as cidades</option></select>
+        <select id="top10TopN">
+            <option value="5">Top 5</option>
+            <option value="10" selected>Top 10</option>
+            <option value="20">Top 20</option>
+            <option value="50">Top 50</option>
+        </select>
+        <button class="btn btn-sm btn-primary" id="btnAtualizarTop10">↻ Atualizar</button>
+        <div class="spacer"></div>
+    </div>
+    <div class="painel-columns">
+
+        <!-- COLUNA 1: TOP CLIENTES -->
+        <div class="painel-column">
+            <div class="painel-column-header">
+                <span>🏆 Top Clientes por Cidade</span>
+            </div>
+            <div class="painel-column-scroll">
+                <div id="top10List">
+                    <div style="padding:24px;text-align:center;color:#64748b;font-size:13px">Carregue dados para ver o Top Clientes</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- COLUNA 2: ROTAS -->
+        <div class="painel-column">
+            <div class="painel-column-header">
+                <span>🗺️ Ranking de Rotas</span>
+                <div style="display:flex;gap:6px">
+                    <button class="metric-btn active" id="rotasMetricVol" style="padding:4px 10px">🌊 Vol.</button>
+                    <button class="metric-btn" id="rotasMetricValor" style="padding:4px 10px">💰 Valor</button>
+                </div>
+            </div>
+            <div class="painel-column-scroll">
+                <div id="painelRotasList">
+                    <div style="padding:24px;text-align:center;color:#64748b;font-size:13px">Carregue dados para ver ranking de rotas</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- COLUNA 3: GRUPOS -->
+        <div class="painel-column">
+            <div class="painel-column-header">
+                <span>📦 Ranking de Grupos</span>
+                <div style="display:flex;gap:6px">
+                    <button class="metric-btn active" id="gruposMetricVol" style="padding:4px 10px">🌊 Vol.</button>
+                    <button class="metric-btn" id="gruposMetricValor" style="padding:4px 10px">💰 Valor</button>
+                </div>
+            </div>
+            <div class="painel-column-scroll">
+                <div id="painelGruposList">
+                    <div style="padding:24px;text-align:center;color:#64748b;font-size:13px">Carregue dados para ver ranking de grupos</div>
+                </div>
+            </div>
+        </div>
+
     </div>
 </div>
 
@@ -1064,6 +1173,7 @@ async function handleUpload(file) {
 // ── LOAD ALL DATA ─────────────────────────────────────────
 async function loadAll() {
     await Promise.all([loadFiltros(), loadStats(), loadPontos(), loadHeatmapIfActive()]);
+    if (document.getElementById('painelFullscreen').classList.contains('show')) loadPainel();
 }
 
 async function loadFiltros() {
@@ -1076,6 +1186,7 @@ async function loadFiltros() {
         populateSelect('filtroRota', data.rotas || [], 'Todas');
         populateSelect('filtroGC', data.gc_values || [], 'Ambos');
         populateSelect('heatmapCidade', data.cidades, 'Todas as cidades');
+        populateSelect('top10Cidade',   data.cidades, 'Todas as cidades');
 
         // Populate city select; keep existing selection or default to all
         const cidadeSel = document.getElementById('filtroCidade');
@@ -1424,7 +1535,26 @@ document.getElementById('btnResetFilters').addEventListener('click', () => {
     document.getElementById('filtroGC').value = '';
     const slider = document.getElementById('maxPontos');
     if (slider) { slider.value = 30000; document.getElementById('maxPontosVal').textContent = '30.000'; }
+    loadFiltros();   // restore all filter options to full list
     loadPontos();
+});
+
+// ── CASCADING CITY FILTER ─────────────────────────────────
+document.getElementById('filtroCidade').addEventListener('change', async function () {
+    const cidade = this.value;
+    const qs = cidade ? `?cidade=${encodeURIComponent(cidade)}` : '';
+    try {
+        const res = await fetch(`${API}/api/filtros${qs}`);
+        if (!res.ok) return;
+        const data = await res.json();
+        populateSelect('filtroTipo',  data.tipos_faturamento);
+        populateSelect('filtroMacro', data.macros, 'Todas');
+        populateSelect('filtroGrupo', data.grupos || [], 'Todos');
+        populateSelect('filtroRota',  data.rotas  || [], 'Todas');
+        // filtroGC keeps fixed SIM/NÃO options
+    } catch (err) {
+        console.error('Cascade filter error:', err);
+    }
 });
 
 document.getElementById('maxPontos')?.addEventListener('input', function () {
@@ -1451,8 +1581,7 @@ document.querySelectorAll('.sidebar-tab').forEach(tab => {
         document.querySelectorAll('.sidebar-tab-content').forEach(c => c.style.display = 'none');
         const tabEl = document.getElementById('tab' + tabId.charAt(0).toUpperCase() + tabId.slice(1));
         if (tabEl) tabEl.style.display = 'flex';
-        if (tabId === 'ranking') loadRankingRotas();
-        if (tabId === 'top10')   loadTop10();
+        if (tabId === 'painel') loadPainel();
     });
 });
 
@@ -1572,41 +1701,120 @@ function renderRankingList(data, containerId, labelKey, onFly) {
     container.appendChild(ul);
 }
 
-async function loadRankingRotas() {
-    const el = document.getElementById('rankingRotasList');
-    if (!el) return;
-    try {
-        const res = await fetch(`${API}/api/ranking/rotas?limit=50`);
-        if (!res.ok) throw new Error();
-        renderRankingList(await res.json(), 'rankingRotasList', 'rota');
-    } catch {
-        el.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-size:12px">Erro ao carregar ranking</div>';
-    }
-}
+// ── PAINEL DATA ───────────────────────────────────────────
+let painelRotasData = [];
+let painelGruposData = [];
+let painelRotasMetric = 'vol';
+let painelGruposMetric = 'vol';
 
-async function loadRankingGrupos() {
-    const el = document.getElementById('rankingGruposList');
-    if (!el) return;
-    try {
-        const res = await fetch(`${API}/api/ranking/grupos?limit=50`);
-        if (!res.ok) throw new Error();
-        renderRankingList(await res.json(), 'rankingGruposList', 'cod_grupo');
-    } catch {
-        el.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-size:12px">Erro ao carregar ranking</div>';
+function renderPainelList(data, containerId, labelKey, metric) {
+    const container = document.getElementById(containerId);
+    if (!container) return;
+    if (!data || data.length === 0) {
+        container.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Nenhum dado disponível</div>';
+        return;
     }
-}
-
-// Sub-tab switching for ranking
-document.querySelectorAll('.ranking-sub').forEach(tab => {
-    tab.addEventListener('click', function () {
-        document.querySelectorAll('.ranking-sub').forEach(t => t.classList.remove('active'));
-        this.classList.add('active');
-        const sub = this.dataset.rank;
-        document.getElementById('rankingRotas').style.display = sub === 'rotas' ? '' : 'none';
-        document.getElementById('rankingGrupos').style.display = sub === 'grupos' ? '' : 'none';
-        if (sub === 'rotas') loadRankingRotas();
-        if (sub === 'grupos') loadRankingGrupos();
+    const sorted = [...data].sort((a, b) => {
+        const va = metric === 'valor' ? (a.total_valor || 0) : (a.total_vol || 0);
+        const vb = metric === 'valor' ? (b.total_valor || 0) : (b.total_vol || 0);
+        return vb - va;
     });
+    container.innerHTML = '';
+    const ul = document.createElement('ul');
+    ul.className = 'ranking-list';
+    sorted.forEach((item, idx) => {
+        const pos = idx + 1;
+        const posClass = pos === 1 ? 'gold' : pos === 2 ? 'silver' : pos === 3 ? 'bronze' : '';
+        const volFmt   = item.total_vol   != null ? Number(item.total_vol).toLocaleString('pt-BR',  { maximumFractionDigits: 1 }) + ' m³' : '—';
+        const valorFmt = item.total_valor != null ? 'R$ ' + Number(item.total_valor).toLocaleString('pt-BR', { maximumFractionDigits: 0 }) : '—';
+        const li = document.createElement('li');
+        li.className = 'ranking-item';
+        li.innerHTML = `
+            <div class="ranking-pos ${posClass}">#${pos}</div>
+            <div class="ranking-info">
+                <div class="ranking-name" title="${esc(item[labelKey]) || '—'}">${esc(item[labelKey]) || '—'}</div>
+                <div class="ranking-meta">${item.qtd || 0} reg · 🌊 ${volFmt}</div>
+                <div class="ranking-meta" style="color:#10b981;margin-top:1px">💰 ${valorFmt}</div>
+            </div>`;
+        ul.appendChild(li);
+    });
+    container.appendChild(ul);
+}
+
+async function loadPainelRotas() {
+    const el = document.getElementById('painelRotasList');
+    if (!el) return;
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Carregando...</div>';
+    try {
+        const res = await fetch(`${API}/api/ranking/rotas?limit=100`);
+        if (!res.ok) throw new Error();
+        painelRotasData = await res.json();
+        renderPainelList(painelRotasData, 'painelRotasList', 'rota', painelRotasMetric);
+    } catch {
+        el.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-size:12px">Erro ao carregar ranking de rotas</div>';
+    }
+}
+
+async function loadPainelGrupos() {
+    const el = document.getElementById('painelGruposList');
+    if (!el) return;
+    el.innerHTML = '<div style="padding:20px;text-align:center;color:#64748b;font-size:12px">Carregando...</div>';
+    try {
+        const res = await fetch(`${API}/api/ranking/grupos?limit=100`);
+        if (!res.ok) throw new Error();
+        painelGruposData = await res.json();
+        renderPainelList(painelGruposData, 'painelGruposList', 'cod_grupo', painelGruposMetric);
+    } catch {
+        el.innerHTML = '<div style="padding:20px;text-align:center;color:#ef4444;font-size:12px">Erro ao carregar ranking de grupos</div>';
+    }
+}
+
+function loadPainel() {
+    loadTop10();
+    loadPainelRotas();
+    loadPainelGrupos();
+}
+
+// ── PAINEL FULLSCREEN OPEN/CLOSE ──────────────────────────
+document.getElementById('btnPainel')?.addEventListener('click', () => {
+    document.getElementById('painelFullscreen').classList.add('show');
+    loadPainel();
+});
+document.getElementById('painelBtnClose')?.addEventListener('click', () => {
+    document.getElementById('painelFullscreen').classList.remove('show');
+});
+document.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+        document.getElementById('painelFullscreen').classList.remove('show');
+    }
+});
+
+// Metric toggle — Rotas
+document.getElementById('rotasMetricVol')?.addEventListener('click', function () {
+    painelRotasMetric = 'vol';
+    this.classList.add('active');
+    document.getElementById('rotasMetricValor').classList.remove('active');
+    renderPainelList(painelRotasData, 'painelRotasList', 'rota', 'vol');
+});
+document.getElementById('rotasMetricValor')?.addEventListener('click', function () {
+    painelRotasMetric = 'valor';
+    this.classList.add('active');
+    document.getElementById('rotasMetricVol').classList.remove('active');
+    renderPainelList(painelRotasData, 'painelRotasList', 'rota', 'valor');
+});
+
+// Metric toggle — Grupos
+document.getElementById('gruposMetricVol')?.addEventListener('click', function () {
+    painelGruposMetric = 'vol';
+    this.classList.add('active');
+    document.getElementById('gruposMetricValor').classList.remove('active');
+    renderPainelList(painelGruposData, 'painelGruposList', 'cod_grupo', 'vol');
+});
+document.getElementById('gruposMetricValor')?.addEventListener('click', function () {
+    painelGruposMetric = 'valor';
+    this.classList.add('active');
+    document.getElementById('gruposMetricVol').classList.remove('active');
+    renderPainelList(painelGruposData, 'painelGruposList', 'cod_grupo', 'valor');
 });
 
 // ── FLY TO POINT ──────────────────────────────────────────

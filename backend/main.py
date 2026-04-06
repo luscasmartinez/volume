@@ -361,14 +361,17 @@ def get_heatmap(
 
 
 @app.get("/api/filtros")
-def get_filtros(db: Session = Depends(get_db)):
-    """Returns unique values for filter dropdowns."""
-    tipos = [r[0] for r in db.query(Ponto.tipo_faturamento).distinct().all() if r[0]]
-    cidades = [r[0] for r in db.query(Ponto.cidade).distinct().order_by(Ponto.cidade).all() if r[0]]
-    macros = [r[0] for r in db.query(Ponto.macro).distinct().order_by(Ponto.macro).all() if r[0]]
-    grupos = [r[0] for r in db.query(Ponto.cod_grupo).distinct().order_by(Ponto.cod_grupo).all() if r[0]]
-    gc_values = [r[0] for r in db.query(Ponto.gc).distinct().all() if r[0]]
-    rotas = [r[0] for r in db.query(Ponto.rota).distinct().order_by(Ponto.rota).all() if r[0]]
+def get_filtros(db: Session = Depends(get_db), cidade: Optional[str] = Query(None)):
+    """Returns unique values for filter dropdowns. If cidade is provided, restricts dependent fields to that city."""
+    base = db.query(Ponto)
+    if cidade:
+        base = base.filter(Ponto.cidade == cidade)
+    tipos = [r[0] for r in base.with_entities(Ponto.tipo_faturamento).distinct().all() if r[0]]
+    cidades = [r[0] for r in db.query(Ponto.cidade).distinct().order_by(Ponto.cidade).all() if r[0]]  # always full list
+    macros = [r[0] for r in base.with_entities(Ponto.macro).distinct().order_by(Ponto.macro).all() if r[0]]
+    grupos = [r[0] for r in base.with_entities(Ponto.cod_grupo).distinct().order_by(Ponto.cod_grupo).all() if r[0]]
+    gc_values = [r[0] for r in base.with_entities(Ponto.gc).distinct().all() if r[0]]
+    rotas = [r[0] for r in base.with_entities(Ponto.rota).distinct().order_by(Ponto.rota).all() if r[0]]
     return {"tipos_faturamento": tipos, "cidades": cidades, "macros": macros, "grupos": grupos, "gc_values": gc_values, "rotas": rotas}
 
 
@@ -476,25 +479,35 @@ def get_ranking(
 def ranking_rotas(
     db: Session = Depends(get_db),
     limit: int = Query(50, le=200),
+    cidade: Optional[str] = Query(None),
 ):
-    """Retorna rotas ordenadas por volume total."""
+    """Retorna rotas ordenadas por volume total e valor total."""
+    cidade_filter = "AND cidade = :cidade" if cidade else ""
+    params: dict = {"limit": limit}
+    if cidade:
+        params["cidade"] = cidade
     result = db.execute(text(
-        "SELECT rota, COUNT(*) as qtd, SUM(vol_fat) as total_vol "
-        "FROM pontos WHERE rota IS NOT NULL AND rota != '' "
+        f"SELECT rota, COUNT(*) as qtd, SUM(vol_fat) as total_vol, SUM(sum_valor) as total_valor "
+        f"FROM pontos WHERE rota IS NOT NULL AND rota != '' {cidade_filter} "
         "GROUP BY rota ORDER BY total_vol DESC LIMIT :limit"
-    ), {"limit": limit}).fetchall()
-    return [{"rota": r[0], "qtd": r[1], "total_vol": r[2] or 0} for r in result]
+    ), params).fetchall()
+    return [{"rota": r[0], "qtd": r[1], "total_vol": r[2] or 0, "total_valor": r[3] or 0} for r in result]
 
 
 @app.get("/api/ranking/grupos")
 def ranking_grupos(
     db: Session = Depends(get_db),
     limit: int = Query(50, le=200),
+    cidade: Optional[str] = Query(None),
 ):
-    """Retorna cod_grupos ordenados por volume total."""
+    """Retorna cod_grupos ordenados por volume total e valor total."""
+    cidade_filter = "AND cidade = :cidade" if cidade else ""
+    params: dict = {"limit": limit}
+    if cidade:
+        params["cidade"] = cidade
     result = db.execute(text(
-        "SELECT cod_grupo, COUNT(*) as qtd, SUM(vol_fat) as total_vol "
-        "FROM pontos WHERE cod_grupo IS NOT NULL AND cod_grupo != '' "
+        f"SELECT cod_grupo, COUNT(*) as qtd, SUM(vol_fat) as total_vol, SUM(sum_valor) as total_valor "
+        f"FROM pontos WHERE cod_grupo IS NOT NULL AND cod_grupo != '' {cidade_filter} "
         "GROUP BY cod_grupo ORDER BY total_vol DESC LIMIT :limit"
-    ), {"limit": limit}).fetchall()
-    return [{"cod_grupo": r[0], "qtd": r[1], "total_vol": r[2] or 0} for r in result]
+    ), params).fetchall()
+    return [{"cod_grupo": r[0], "qtd": r[1], "total_vol": r[2] or 0, "total_valor": r[3] or 0} for r in result]

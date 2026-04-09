@@ -558,3 +558,88 @@ def ranking_grupo_rotas(
         "GROUP BY cidade, rota ORDER BY total_valor DESC LIMIT :limit"
     ), params).fetchall()
     return [{"cidade": r[0], "rota": r[1], "qtd": r[2], "total_vol": r[3] or 0, "total_valor": r[4] or 0} for r in result]
+
+
+@app.get("/api/analitico")
+def get_analitico(
+    db: Session = Depends(get_db),
+    cidade: Optional[str] = Query(None),
+    grupo: Optional[str] = Query(None),
+    rota: Optional[str] = Query(None),
+    tipo_faturamento: Optional[str] = Query(None),
+    macro: Optional[str] = Query(None),
+    gc: Optional[str] = Query(None),
+    limit: int = Query(50000, le=200000),
+):
+    """Retorna analítico agregado dos registros nos filtros selecionados."""
+    from sqlalchemy import func as sqlfunc
+
+    base_q = db.query(Ponto)
+    if cidade:           base_q = base_q.filter(Ponto.cidade == cidade)
+    if grupo:            base_q = base_q.filter(Ponto.cod_grupo == grupo)
+    if rota:             base_q = base_q.filter(Ponto.rota == rota)
+    if tipo_faturamento: base_q = base_q.filter(Ponto.tipo_faturamento == tipo_faturamento)
+    if macro:            base_q = base_q.filter(Ponto.macro == macro)
+    if gc == "SIM":
+        base_q = base_q.filter(Ponto.gc.ilike("SIM"))
+    elif gc == "NAO":
+        base_q = base_q.filter(~Ponto.gc.ilike("SIM"))
+
+    total = base_q.count()
+    agg_row = base_q.with_entities(
+        sqlfunc.coalesce(sqlfunc.sum(Ponto.vol_fat), 0),
+        sqlfunc.coalesce(sqlfunc.sum(Ponto.sum_valor), 0),
+    ).one()
+    total_vol   = float(agg_row[0])
+    total_valor = float(agg_row[1])
+    total_gc    = base_q.filter(Ponto.gc.ilike("SIM")).count()
+
+    def breakdown(field):
+        rows = (
+            base_q.with_entities(
+                field,
+                sqlfunc.count(Ponto.id),
+                sqlfunc.coalesce(sqlfunc.sum(Ponto.vol_fat), 0),
+                sqlfunc.coalesce(sqlfunc.sum(Ponto.sum_valor), 0),
+            )
+            .group_by(field)
+            .order_by(sqlfunc.sum(Ponto.vol_fat).desc().nullslast())
+            .all()
+        )
+        return [{"label": r[0] or "N/A", "qtd": r[1], "vol": float(r[2]), "valor": float(r[3])} for r in rows]
+
+    by_tipo = breakdown(Ponto.tipo_faturamento)
+    by_rota = breakdown(Ponto.rota)
+    by_sit  = breakdown(Ponto.sit_ligacao)
+
+    pontos = base_q.order_by(Ponto.vol_fat.desc().nullslast()).limit(limit).all()
+    pontos_out = [
+        {
+            "num_ligacao":    p.num_ligacao,
+            "nom_cliente":    p.nom_cliente,
+            "tipo_faturamento": p.tipo_faturamento,
+            "cidade":         p.cidade,
+            "macro":          p.macro,
+            "micro":          p.micro,
+            "cod_grupo":      p.cod_grupo,
+            "rota":           p.rota,
+            "gc":             p.gc,
+            "sit_ligacao":    p.sit_ligacao,
+            "categoria":      p.categoria,
+            "vol_fat":        p.vol_fat,
+            "sum_valor":      p.sum_valor,
+            "is_grande":      p.is_grande,
+        }
+        for p in pontos
+    ]
+
+    return {
+        "total":       total,
+        "total_vol":   total_vol,
+        "total_valor": total_valor,
+        "total_gc":    total_gc,
+        "by_tipo":     by_tipo,
+        "by_rota":     by_rota,
+        "by_sit":      by_sit,
+        "pontos":      pontos_out,
+    }

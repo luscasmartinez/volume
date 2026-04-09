@@ -917,6 +917,9 @@
                 <button class="btn btn-primary" style="width:100%;margin-top:6px" id="btnAplicarFiltros">
                     Aplicar Filtros
                 </button>
+                <button class="btn btn-success" style="width:100%;margin-top:6px" id="btnExtrairAnalitico">
+                    📊 Extrair Analítico
+                </button>
             </div>
 
             <!-- Layers -->
@@ -2153,12 +2156,123 @@ document.getElementById('gruposMetricValor')?.addEventListener('click', function
     renderPainelGrupos(painelGruposData, 'valor');
 });
 
+// ── ANALITICO FROM FILTERS ────────────────────────────────
+async function openAnaliticoFromFilters() {
+    const cidade = document.getElementById('filtroCidade').value;
+    const grupo  = document.getElementById('filtroGrupo').value;
+    const rota   = document.getElementById('filtroRota').value;
+    const tipo   = document.getElementById('filtroTipo').value;
+    const macro  = document.getElementById('filtroMacro').value;
+    const gc     = document.getElementById('filtroGC').value;
+
+    if (!cidade && !grupo && !rota) {
+        toast('Selecione ao menos Cidade, Grupo ou Rota para extrair o analítico', 'warning');
+        return;
+    }
+
+    const params = new URLSearchParams();
+    if (cidade) params.append('cidade', cidade);
+    if (grupo)  params.append('grupo', grupo);
+    if (rota)   params.append('rota', rota);
+    if (tipo)   params.append('tipo_faturamento', tipo);
+    if (macro)  params.append('macro', macro);
+    if (gc)     params.append('gc', gc);
+
+    // Update modal header + subtitle
+    document.querySelector('#analiticoOverlay .analitico-header h3').textContent = '📊 Analítico por Filtros';
+    const parts = [];
+    if (cidade) parts.push(`Cidade: ${cidade}`);
+    if (grupo)  parts.push(`Grupo: ${grupo}`);
+    if (rota)   parts.push(`Rota: ${rota}`);
+    if (tipo)   parts.push(`Tipo: ${tipo}`);
+    document.getElementById('analiticoSubtitle').textContent = parts.join(' | ');
+
+    document.getElementById('analiticoBody').innerHTML = '<div style="padding:40px;text-align:center;color:#64748b"><div class="spinner" style="margin:0 auto 12px"></div>Carregando analítico...</div>';
+    document.getElementById('analiticoOverlay').classList.add('show');
+
+    try {
+        const res = await fetch(`${API}/api/analitico?${params}`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const d = await res.json();
+        renderAnaliticoFiltros(d);
+        document.getElementById('analiticoOverlay')._csvData = d.pontos;
+    } catch (err) {
+        document.getElementById('analiticoBody').innerHTML =
+            `<div style="padding:40px;text-align:center;color:#ef4444">Erro ao carregar analítico: ${esc(err.message)}</div>`;
+        toast('Erro ao extrair analítico', 'error');
+    }
+}
+
+function renderAnaliticoFiltros(d) {
+    const fmtN = n => Number(n || 0).toLocaleString('pt-BR');
+    const fmtV = n => Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
+    const fmtR = n => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
+    const totalVol = d.total_vol;
+
+    function makeSection(icon, title, rows) {
+        if (!rows || rows.length === 0) return '';
+        const trs = rows.map(r => `
+            <tr>
+                <td>${esc(r.label)}</td>
+                <td>${fmtN(r.qtd)}</td>
+                <td>${fmtV(r.vol)} m³</td>
+                <td>${fmtR(r.valor)}</td>
+                <td style="color:#38bdf8">${totalVol > 0 ? ((r.vol / totalVol) * 100).toFixed(1) + '%' : '—'}</td>
+            </tr>`).join('');
+        return `
+            <div>
+                <div class="analitico-section-title">${icon} ${esc(title)}</div>
+                <div style="overflow-x:auto">
+                    <table class="analitico-table">
+                        <thead><tr>
+                            <th>${esc(title)}</th><th>Qtd</th>
+                            <th>Vol. Fat. (m³)</th><th>Valor</th><th>% Vol.</th>
+                        </tr></thead>
+                        <tbody>${trs}</tbody>
+                    </table>
+                </div>
+            </div>`;
+    }
+
+    document.getElementById('analiticoBody').innerHTML = `
+        <div class="analitico-kpis">
+            <div class="analitico-kpi ak-blue">
+                <div class="ak-label">Total Ligações</div>
+                <div class="ak-value">${fmtN(d.total)}</div>
+            </div>
+            <div class="analitico-kpi ak-cyan">
+                <div class="ak-label">Vol. Faturado</div>
+                <div class="ak-value">${fmtV(d.total_vol)}</div>
+                <div class="ak-sub">m³</div>
+            </div>
+            <div class="analitico-kpi ak-green">
+                <div class="ak-label">Valor Total</div>
+                <div class="ak-value" style="font-size:13px">${fmtR(d.total_valor)}</div>
+            </div>
+            <div class="analitico-kpi ak-purple">
+                <div class="ak-label">Grandes Consumidores</div>
+                <div class="ak-value">${fmtN(d.total_gc)}</div>
+            </div>
+            <div class="analitico-kpi" style="border-left-color:#f59e0b">
+                <div class="ak-label">Tipos Distintos</div>
+                <div class="ak-value" style="color:#fcd34d">${(d.by_tipo || []).length}</div>
+            </div>
+        </div>
+        ${makeSection('🏷️', 'Tipo de Faturamento', d.by_tipo)}
+        ${makeSection('🗺️', 'Rota', d.by_rota)}
+        ${makeSection('📋', 'Situação da Ligação', d.by_sit)}`;
+}
+
+document.getElementById('btnExtrairAnalitico')?.addEventListener('click', openAnaliticoFromFilters);
+
 // ── MAP ANALYTICS ─────────────────────────────────────────
 function openMapAnalitico() {
     if (!allMarkers || allMarkers.length === 0) {
         toast('Nenhum ponto renderizado no mapa', 'warn');
         return;
     }
+
+    document.querySelector('#analiticoOverlay .analitico-header h3').textContent = '📊 Analítico dos Pontos Renderizados';
 
     const data = allMarkers.map(m => m._pontoData).filter(Boolean);
 

@@ -2156,8 +2156,14 @@ document.getElementById('gruposMetricValor')?.addEventListener('click', function
     renderPainelGrupos(painelGruposData, 'valor');
 });
 
-// ── ANALITICO FROM FILTERS ────────────────────────────────
-async function openAnaliticoFromFilters() {
+// ── ANALITICO FROM FILTERS — direct CSV download ──────────
+function _csvCell(val) {
+    const s = val != null ? String(val) : '';
+    return s.includes(',') || s.includes('"') || s.includes('\n')
+        ? `"${s.replace(/"/g, '""')}"` : s;
+}
+
+async function downloadAnaliticoCSV() {
     const cidade = document.getElementById('filtroCidade').value;
     const grupo  = document.getElementById('filtroGrupo').value;
     const rota   = document.getElementById('filtroRota').value;
@@ -2172,98 +2178,132 @@ async function openAnaliticoFromFilters() {
 
     const params = new URLSearchParams();
     if (cidade) params.append('cidade', cidade);
-    if (grupo)  params.append('grupo', grupo);
-    if (rota)   params.append('rota', rota);
+    if (grupo)  params.append('grupo',  grupo);
+    if (rota)   params.append('rota',   rota);
     if (tipo)   params.append('tipo_faturamento', tipo);
-    if (macro)  params.append('macro', macro);
-    if (gc)     params.append('gc', gc);
+    if (macro)  params.append('macro',  macro);
+    if (gc)     params.append('gc',     gc);
 
-    // Update modal header + subtitle
-    document.querySelector('#analiticoOverlay .analitico-header h3').textContent = '📊 Analítico por Filtros';
-    const parts = [];
-    if (cidade) parts.push(`Cidade: ${cidade}`);
-    if (grupo)  parts.push(`Grupo: ${grupo}`);
-    if (rota)   parts.push(`Rota: ${rota}`);
-    if (tipo)   parts.push(`Tipo: ${tipo}`);
-    document.getElementById('analiticoSubtitle').textContent = parts.join(' | ');
-
-    document.getElementById('analiticoBody').innerHTML = '<div style="padding:40px;text-align:center;color:#64748b"><div class="spinner" style="margin:0 auto 12px"></div>Carregando analítico...</div>';
-    document.getElementById('analiticoOverlay').classList.add('show');
+    const btn = document.getElementById('btnExtrairAnalitico');
+    const originalText = btn.textContent;
+    btn.textContent = '⏳ Gerando...';
+    btn.disabled = true;
 
     try {
         const res = await fetch(`${API}/api/analitico?${params}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const d = await res.json();
-        renderAnaliticoFiltros(d);
-        document.getElementById('analiticoOverlay')._csvData = d.pontos;
+
+        if (!d.pontos || d.pontos.length === 0) {
+            toast('Nenhum registro encontrado para os filtros selecionados', 'warning');
+            return;
+        }
+
+        // ── Build CSV ────────────────────────────────────────
+        const lines = [];
+        const sep = ';;;;;;;;;;;;;;';
+
+        // Summary block
+        lines.push('ANALÍTICO VOLUME PLATFORM');
+        lines.push(`Data:,${new Date().toLocaleDateString('pt-BR')}`);
+        if (cidade) lines.push(`Cidade:,${_csvCell(cidade)}`);
+        if (grupo)  lines.push(`Grupo:,${_csvCell(grupo)}`);
+        if (rota)   lines.push(`Rota:,${_csvCell(rota)}`);
+        if (tipo)   lines.push(`Tipo Faturamento:,${_csvCell(tipo)}`);
+        if (macro)  lines.push(`Macro:,${_csvCell(macro)}`);
+        lines.push('');
+        lines.push(`Total Ligações:,${d.total}`);
+        lines.push(`Vol. Faturado (m³):,${(d.total_vol || 0).toFixed(2).replace('.', ',')}`);
+        lines.push(`Valor Total (R$):,${(d.total_valor || 0).toFixed(2).replace('.', ',')}`);
+        lines.push(`Grandes Consumidores:,${d.total_gc || 0}`);
+
+        // Breakdown by tipo
+        if (d.by_tipo && d.by_tipo.length > 0) {
+            lines.push('');
+            lines.push('POR TIPO DE FATURAMENTO');
+            lines.push('Tipo,Qtd,Vol. Fat. (m³),Valor (R$),% Vol.');
+            d.by_tipo.forEach(r => {
+                const pct = d.total_vol > 0 ? ((r.vol / d.total_vol) * 100).toFixed(1) : '0';
+                lines.push([
+                    _csvCell(r.label), r.qtd,
+                    (r.vol || 0).toFixed(2).replace('.', ','),
+                    (r.valor || 0).toFixed(2).replace('.', ','),
+                    pct + '%'
+                ].join(','));
+            });
+        }
+
+        // Breakdown by rota
+        if (d.by_rota && d.by_rota.length > 0) {
+            lines.push('');
+            lines.push('POR ROTA');
+            lines.push('Rota,Qtd,Vol. Fat. (m³),Valor (R$),% Vol.');
+            d.by_rota.forEach(r => {
+                const pct = d.total_vol > 0 ? ((r.vol / d.total_vol) * 100).toFixed(1) : '0';
+                lines.push([
+                    _csvCell(r.label), r.qtd,
+                    (r.vol || 0).toFixed(2).replace('.', ','),
+                    (r.valor || 0).toFixed(2).replace('.', ','),
+                    pct + '%'
+                ].join(','));
+            });
+        }
+
+        // Breakdown by situação
+        if (d.by_sit && d.by_sit.length > 0) {
+            lines.push('');
+            lines.push('POR SITUAÇÃO DA LIGAÇÃO');
+            lines.push('Situação,Qtd,Vol. Fat. (m³),Valor (R$),% Vol.');
+            d.by_sit.forEach(r => {
+                const pct = d.total_vol > 0 ? ((r.vol / d.total_vol) * 100).toFixed(1) : '0';
+                lines.push([
+                    _csvCell(r.label), r.qtd,
+                    (r.vol || 0).toFixed(2).replace('.', ','),
+                    (r.valor || 0).toFixed(2).replace('.', ','),
+                    pct + '%'
+                ].join(','));
+            });
+        }
+
+        // Detailed records
+        lines.push('');
+        lines.push('REGISTROS DETALHADOS');
+        const headers = [
+            'num_ligacao','nom_cliente','tipo_faturamento','cidade','macro','micro',
+            'cod_grupo','rota','gc','sit_ligacao','categoria','vol_fat','sum_valor','is_grande'
+        ];
+        lines.push(headers.join(','));
+        d.pontos.forEach(p => {
+            lines.push(headers.map(h => _csvCell(p[h])).join(','));
+        });
+
+        // ── Trigger download ────────────────────────────────
+        const csv  = '\uFEFF' + lines.join('\r\n');   // BOM for Excel UTF-8
+        const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+        const url  = URL.createObjectURL(blob);
+        const a    = document.createElement('a');
+        const fileParts = [
+            'analitico',
+            cidade || grupo || rota || 'filtros',
+            new Date().toISOString().slice(0, 10)
+        ].filter(Boolean).join('_').replace(/[^\w\-]/g, '_');
+        a.href     = url;
+        a.download = `${fileParts}.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+
+        toast(`Analítico exportado — ${d.pontos.length.toLocaleString('pt-BR')} registros`, 'success');
     } catch (err) {
-        document.getElementById('analiticoBody').innerHTML =
-            `<div style="padding:40px;text-align:center;color:#ef4444">Erro ao carregar analítico: ${esc(err.message)}</div>`;
-        toast('Erro ao extrair analítico', 'error');
+        toast(`Erro ao gerar analítico: ${err.message}`, 'error');
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
     }
 }
 
-function renderAnaliticoFiltros(d) {
-    const fmtN = n => Number(n || 0).toLocaleString('pt-BR');
-    const fmtV = n => Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 1 });
-    const fmtR = n => 'R$ ' + Number(n || 0).toLocaleString('pt-BR', { maximumFractionDigits: 0 });
-    const totalVol = d.total_vol;
-
-    function makeSection(icon, title, rows) {
-        if (!rows || rows.length === 0) return '';
-        const trs = rows.map(r => `
-            <tr>
-                <td>${esc(r.label)}</td>
-                <td>${fmtN(r.qtd)}</td>
-                <td>${fmtV(r.vol)} m³</td>
-                <td>${fmtR(r.valor)}</td>
-                <td style="color:#38bdf8">${totalVol > 0 ? ((r.vol / totalVol) * 100).toFixed(1) + '%' : '—'}</td>
-            </tr>`).join('');
-        return `
-            <div>
-                <div class="analitico-section-title">${icon} ${esc(title)}</div>
-                <div style="overflow-x:auto">
-                    <table class="analitico-table">
-                        <thead><tr>
-                            <th>${esc(title)}</th><th>Qtd</th>
-                            <th>Vol. Fat. (m³)</th><th>Valor</th><th>% Vol.</th>
-                        </tr></thead>
-                        <tbody>${trs}</tbody>
-                    </table>
-                </div>
-            </div>`;
-    }
-
-    document.getElementById('analiticoBody').innerHTML = `
-        <div class="analitico-kpis">
-            <div class="analitico-kpi ak-blue">
-                <div class="ak-label">Total Ligações</div>
-                <div class="ak-value">${fmtN(d.total)}</div>
-            </div>
-            <div class="analitico-kpi ak-cyan">
-                <div class="ak-label">Vol. Faturado</div>
-                <div class="ak-value">${fmtV(d.total_vol)}</div>
-                <div class="ak-sub">m³</div>
-            </div>
-            <div class="analitico-kpi ak-green">
-                <div class="ak-label">Valor Total</div>
-                <div class="ak-value" style="font-size:13px">${fmtR(d.total_valor)}</div>
-            </div>
-            <div class="analitico-kpi ak-purple">
-                <div class="ak-label">Grandes Consumidores</div>
-                <div class="ak-value">${fmtN(d.total_gc)}</div>
-            </div>
-            <div class="analitico-kpi" style="border-left-color:#f59e0b">
-                <div class="ak-label">Tipos Distintos</div>
-                <div class="ak-value" style="color:#fcd34d">${(d.by_tipo || []).length}</div>
-            </div>
-        </div>
-        ${makeSection('🏷️', 'Tipo de Faturamento', d.by_tipo)}
-        ${makeSection('🗺️', 'Rota', d.by_rota)}
-        ${makeSection('📋', 'Situação da Ligação', d.by_sit)}`;
-}
-
-document.getElementById('btnExtrairAnalitico')?.addEventListener('click', openAnaliticoFromFilters);
+document.getElementById('btnExtrairAnalitico')?.addEventListener('click', downloadAnaliticoCSV);
 
 // ── MAP ANALYTICS ─────────────────────────────────────────
 function openMapAnalitico() {

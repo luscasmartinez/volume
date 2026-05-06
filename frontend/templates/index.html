@@ -298,6 +298,16 @@
         .analitico-table td:not(:first-child) { text-align: right; color: #94a3b8; }
         .analitico-table tr:hover td { background: #1a2535; }
         .analitico-table tr:first-child td { font-weight: 700; color: #f1f5f9; }
+
+        .gis-tooltip {
+            background: rgba(15, 23, 42, 0.95);
+            color: #f8fafc;
+            border: 1px solid #334155;
+            border-radius: 6px;
+            padding: 4px 8px;
+            font-size: 12px;
+            box-shadow: 0 0 8px rgba(0, 0, 0, 0.35);
+        }
         .analitico-footer {
             padding: 12px 20px; border-top: 1px solid #1e293b; display: flex;
             gap: 8px; justify-content: flex-end; flex-shrink: 0; background: #0a0f1e;
@@ -981,6 +991,19 @@
                 </div>
             </div>
 
+            <!-- Shapefile GIS Layers -->
+            <div class="sidebar-section">
+                <h3>🛰️ Camadas GIS</h3>
+                <div id="gisLayersList" style="display:flex;flex-direction:column;gap:8px">
+                    <span style="color:#94a3b8;font-size:12px">Carregando camadas GIS...</span>
+                </div>
+                <div id="gisAnalysisContainer" style="margin-top:10px;border-top:1px solid #334155;padding-top:10px;display:none">
+                    <button class="btn btn-primary" style="width:100%;font-size:12px;padding:6px" id="btnGisAnalysis">
+                        📊 Dados da Camada
+                    </button>
+                </div>
+            </div>
+
             <!-- Legenda -->
             <div class="sidebar-section">
                 <h3>🎨 Legenda — Tipo Faturamento</h3>
@@ -1187,6 +1210,19 @@
 <!-- Toast container -->
 <div class="toast-container" id="toasts"></div>
 
+<!-- GIS ANALYSIS MODAL -->
+<div class="analitico-overlay" id="gisAnalysisOverlay" style="display:none">
+    <div class="analitico-modal">
+        <div class="analitico-header">
+            <h3>📊 Análise de Dados GIS — <span id="gisLayerNameTitle"></span></h3>
+            <button class="btn btn-sm btn-outline" id="btnGisAnalysisClose">✕ Fechar</button>
+        </div>
+        <div class="analitico-body" id="gisAnalysisBody" style="font-size:12px">
+            <div style="padding:40px;text-align:center;color:#64748b">Carregando análise...</div>
+        </div>
+    </div>
+</div>
+
 <!-- ANALYTICS MODAL -->
 <div class="analitico-overlay" id="analiticoOverlay">
     <div class="analitico-modal">
@@ -1306,6 +1342,9 @@ let allMarkers = [];
 let heatmapActive = false;
 let clusterEnabled = true;
 let pontosAtivos = 0;
+let gisLayerGroup = L.layerGroup().addTo(map);
+let gisGeoJsonLayers = {};
+let gisLayersMeta = [];
 
 map.addLayer(markerClusterGroup);
 
@@ -1374,8 +1413,53 @@ async function handleUpload(file) {
 
 // ── LOAD ALL DATA ─────────────────────────────────────────
 async function loadAll() {
-    await Promise.all([loadFiltros(), loadStats(), loadPontos(), loadHeatmapIfActive()]);
+    await Promise.all([loadFiltros(), loadStats(), loadPontos(), loadGisLayers(), loadHeatmapIfActive()]);
     if (document.getElementById('painelFullscreen').classList.contains('show')) loadPainel();
+}
+
+async function loadGisLayers() {
+    try {
+        const res = await fetch(`${API}/api/gis/layers`);
+        const data = await res.json();
+        gisLayersMeta = data.layers || [];
+        const container = document.getElementById('gisLayersList');
+        container.innerHTML = '';
+
+        if (!gisLayersMeta.length) {
+            container.innerHTML = '<span style="color:#94a3b8;font-size:12px">Nenhuma camada GIS disponível.</span>';
+            return;
+        }
+
+        gisLayersMeta.forEach(layer => {
+            const row = document.createElement('div');
+            row.className = 'toggle-row';
+            row.style.justifyContent = 'space-between';
+            row.innerHTML = `
+                <span style="font-size:12px;color:#e2e8f0">${esc(layer.title)}</span>
+                <label class="toggle">
+                    <input type="checkbox" data-gis-layer="${esc(layer.id)}" />
+                    <span class="toggle-slider"></span>
+                </label>
+            `;
+            container.appendChild(row);
+        });
+
+        container.querySelectorAll('input[data-gis-layer]').forEach(input => {
+            input.addEventListener('change', async function () {
+                const layerId = this.dataset.gisLayer;
+                if (this.checked) {
+                    await addGisLayer(layerId);
+                } else {
+                    removeGisLayer(layerId);
+                }
+            });
+        });
+        updateGisAnalysisButton();
+    } catch (err) {
+        console.error('Falha ao carregar camadas GIS:', err);
+        const container = document.getElementById('gisLayersList');
+        if (container) container.innerHTML = '<span style="color:#f97316;font-size:12px">Erro ao carregar camadas GIS.</span>';
+    }
 }
 
 async function loadFiltros() {
@@ -1403,6 +1487,171 @@ async function loadFiltros() {
     } catch (err) {
         console.error('Failed to load filters:', err);
     }
+}
+
+function humanizeKey(key) {
+    return String(key)
+        .replace(/_/g, ' ')
+        .replace(/([a-z])([A-Z])/g, '$1 $2')
+        .replace(/\b\w/g, c => c.toUpperCase());
+}
+
+function styleGisFeature(feature) {
+    const type = feature?.geometry?.type;
+    const style = {
+        color: '#f59e0b',
+        weight: 2,
+        opacity: 0.95,
+        fillColor: '#f59e0b',
+        fillOpacity: 0.12,
+        dashArray: null,
+    };
+    if (type === 'LineString' || type === 'MultiLineString') {
+        style.fillOpacity = 0;
+        style.dashArray = '6,4';
+        style.weight = 3;
+    }
+    if (type === 'Point' || type === 'MultiPoint') {
+        style.fillOpacity = 0.9;
+        style.weight = 1;
+    }
+    return style;
+}
+
+function buildGisPopupContent(properties) {
+    const firstTitle = properties?.Nome || properties?.nome || properties?.DESCRICAO || properties?.Descricao || properties?.Municipio || '';
+    const rows = Object.entries(properties || {})
+        .filter(([key, value]) => value != null && key !== 'geometry')
+        .sort(([a], [b]) => a.localeCompare(b, 'pt-BR', { sensitivity: 'base' }))
+        .map(([key, value]) => `
+            <div style="display:flex;justify-content:space-between;gap:8px;font-size:12px;margin-bottom:4px;">
+                <strong style="color:#94a3b8;">${esc(humanizeKey(key))}</strong>
+                <span style="color:#e2e8f0;">${esc(value)}</span>
+            </div>`)
+        .join('');
+    return `<div style="max-width:320px;">${firstTitle ? `<div style="font-size:14px;font-weight:700;color:#f8fafc;margin-bottom:8px;">${esc(firstTitle)}</div>` : ''}${rows || '<div style="color:#94a3b8;font-size:12px">Sem atributos disponíveis</div>'}</div>`;
+}
+
+async function addGisLayer(layerId) {
+    if (gisGeoJsonLayers[layerId]) {
+        gisGeoJsonLayers[layerId].addTo(gisLayerGroup);
+        return;
+    }
+
+    setLoading(true, 'Carregando camada GIS...');
+    try {
+        const res = await fetch(`${API}/api/gis/layer/${encodeURIComponent(layerId)}`);
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.detail || 'Falha ao carregar camada GIS');
+        }
+        const geojson = await res.json();
+        const layer = L.geoJSON(geojson, {
+            style: styleGisFeature,
+            pointToLayer: (feature, latlng) => L.circleMarker(latlng, {
+                radius: 6,
+                fillColor: '#f59e0b',
+                color: '#ffb347',
+                weight: 1,
+                fillOpacity: 0.85,
+            }),
+            onEachFeature: (feature, layer) => {
+                if (feature.properties) {
+                    layer.bindPopup(buildGisPopupContent(feature.properties), { maxWidth: 320 });
+                    const label = feature.properties.Nome || feature.properties.nome || feature.properties.DESCRICAO || feature.properties.Descricao || feature.properties.Municipio;
+                    if (label) {
+                        layer.bindTooltip(esc(label), { permanent: false, direction: 'top', className: 'gis-tooltip' });
+                    }
+                }
+            },
+        });
+        gisGeoJsonLayers[layerId] = layer;
+        layer.addTo(gisLayerGroup);
+        currentGisLayerId = layerId;
+        updateGisAnalysisButton();
+
+        const bounds = layer.getBounds();
+        if (bounds && bounds.isValid && bounds.isValid()) {
+            map.fitBounds(bounds.pad(0.1));
+        }
+    } catch (err) {
+        console.error('Erro GIS:', err);
+        toast(`Erro ao carregar camada GIS: ${err.message}`, 'error');
+        const checkbox = document.querySelector(`input[data-gis-layer="${layerId}"]`);
+        if (checkbox) checkbox.checked = false;
+    } finally {
+        setLoading(false);
+    }
+}
+
+function removeGisLayer(layerId) {
+    const layer = gisGeoJsonLayers[layerId];
+    if (layer && map.hasLayer(layer)) {
+        map.removeLayer(layer);
+    }
+}
+
+let currentGisLayerId = null;
+
+async function loadGisAnalysis(layerId) {
+    currentGisLayerId = layerId;
+    const overlayEl = document.getElementById('gisAnalysisOverlay');
+    const bodyEl = document.getElementById('gisAnalysisBody');
+    const titleEl = document.getElementById('gisLayerNameTitle');
+    
+    overlayEl.style.display = 'flex';
+    bodyEl.innerHTML = '<div style="padding:40px;text-align:center;color:#64748b">Carregando análise...</div>';
+    
+    const layerInfo = gisLayersMeta.find(l => l.id === layerId);
+    if (layerInfo) titleEl.textContent = layerInfo.title;
+    
+    try {
+        const res = await fetch(`${API}/api/gis/layer/${encodeURIComponent(layerId)}/statistics`);
+        if (!res.ok) throw new Error('Erro ao carregar análise');
+        
+        const data = await res.json();
+        let html = '';
+        
+        if (data.inspection) {
+            const insp = data.inspection;
+            html += '<div style="margin-bottom:20px">';
+            html += '<h4 style="color:#f8fafc;margin-bottom:10px">📋 Inspeção de Dados</h4>';
+            html += `<div style="background:#0d1520;padding:10px;border-radius:6px;font-size:11px;line-height:1.8">`;
+            html += `Dimensões: <strong>${insp.shape[0]} linhas × ${insp.shape[1]} colunas</strong><br>`;
+            html += `CRS: <strong>${insp.crs}</strong><br>`;
+            html += `Geometrias: <strong>${Object.entries(insp.geometry_types || {}).map(([k,v]) => `${k}: ${v}`).join(', ')}</strong><br>`;
+            html += `Duplicatas: <strong>${insp.duplicates}</strong><br>`;
+            if (insp.key_candidates && insp.key_candidates.length > 0) {
+                html += `Chaves candidatas: <strong>${insp.key_candidates.join(', ')}</strong><br>`;
+            }
+            html += `</div></div>`;
+        }
+        
+        if (data.geometry) {
+            const geom = data.geometry;
+            html += '<div style="margin-bottom:20px">';
+            html += '<h4 style="color:#f8fafc;margin-bottom:10px">📐 Propriedades Geométricas</h4>';
+            html += `<div style="background:#0d1520;padding:10px;border-radius:6px;font-size:11px;line-height:1.8">`;
+            html += `CRS: <strong>${geom.crs_used}</strong><br>`;
+            if (geom.area_stats) {
+                html += `Área total: <strong>${(geom.total_area_m2 / 1e6).toFixed(2)} km²</strong><br>`;
+                html += `Área média: <strong>${(geom.area_stats.mean / 10000).toFixed(2)} ha</strong><br>`;
+                html += `Área mín/máx: <strong>${(geom.area_stats['min'] / 10000).toFixed(2)}</strong> / <strong>${(geom.area_stats['max'] / 10000).toFixed(2)} ha</strong><br>`;
+            }
+            html += `</div></div>`;
+        }
+        
+        bodyEl.innerHTML = html || '<div style="color:#64748b">Sem informações disponíveis</div>';
+    } catch (err) {
+        console.error('Erro ao carregar análise GIS:', err);
+        bodyEl.innerHTML = `<div style="color:#f97316">Erro ao carregar análise: ${err.message}</div>`;
+    }
+}
+
+function closeGisAnalysis() {
+    const overlayEl = document.getElementById('gisAnalysisOverlay');
+    overlayEl.style.display = 'none';
+    currentGisLayerId = null;
 }
 
 function populateSelect(id, items, allLabel = 'Todos') {
@@ -2304,6 +2553,39 @@ async function downloadAnaliticoCSV() {
 }
 
 document.getElementById('btnExtrairAnalitico')?.addEventListener('click', downloadAnaliticoCSV);
+
+// ── GIS ANALYSIS ──────────────────────────────────────────
+document.getElementById('btnGisAnalysis')?.addEventListener('click', function () {
+    if (currentGisLayerId) {
+        loadGisAnalysis(currentGisLayerId);
+    } else {
+        const layerId = gisLayersMeta[0]?.id;
+        if (layerId) {
+            loadGisAnalysis(layerId);
+        } else {
+            toast('Nenhuma camada GIS disponível', 'warning');
+        }
+    }
+});
+
+document.getElementById('btnGisAnalysisClose')?.addEventListener('click', closeGisAnalysis);
+
+document.getElementById('gisAnalysisOverlay')?.addEventListener('click', function (e) {
+    if (e.target === this) closeGisAnalysis();
+});
+
+// Mostrar botão de análise quando uma camada GIS é carregada
+function updateGisAnalysisButton() {
+    const btn = document.getElementById('btnGisAnalysis');
+    const container = document.getElementById('gisAnalysisContainer');
+    if (gisLayersMeta && gisLayersMeta.length > 0) {
+        if (container) container.style.display = '';
+        if (btn) btn.disabled = false;
+    } else {
+        if (container) container.style.display = 'none';
+        if (btn) btn.disabled = true;
+    }
+}
 
 // ── MAP ANALYTICS ─────────────────────────────────────────
 function openMapAnalitico() {

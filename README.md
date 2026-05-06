@@ -37,7 +37,7 @@ start.bat
 
 ```bash
 cd backend
-python -m uvicorn main:app --host 0.0.0.0 --port 8000 --reload
+python -m uvicorn main:app --host 0.0.0.0 --port 8001 --reload
 ```
 (adicionar filtro por referencia)
 Aguarde a mensagem:
@@ -77,7 +77,13 @@ http://localhost:8000
 | Ver detalhes de um ponto | Clique sobre o marcador |
 | Ajustar zoom para todos os pontos | Botão **"⊕ Ajustar mapa"** |
 | Trocar estilo do mapa | Controle no canto inferior direito (Escuro / OSM / Satélite) |
+### 4. Camadas GIS
 
+- Coloque seus arquivos shapefile (`.shp`, `.dbf`, `.shx`, `.prj`) em `backend/ArcGis`
+- O backend lê automaticamente os arquivos `.shp` presentes nessa pasta
+- Use a seção **Camadas GIS** no painel esquerdo para ativar/desativar a exibição
+- O shapefile é convertido para GeoJSON e renderizado no mapa Leaflet
+- Suporte a pontos, linhas e polígonos com popups de atributos
 ### 3. Cores dos pontos (Tipo de Faturamento)
 
 | Cor | Tipo |

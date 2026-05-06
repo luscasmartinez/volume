@@ -2,7 +2,10 @@ import os
 import io
 import math
 import datetime
+import glob
+import json
 import logging
+import re
 import unicodedata
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Query
@@ -11,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+import geopandas as gpd
 import pandas as pd
 
 from database import engine, get_db, Base
@@ -51,6 +55,46 @@ TEMPLATES_DIR = os.path.join(FRONTEND_DIR, "templates")
 
 if os.path.exists(STATIC_DIR):
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+
+# GIS / shapefile folder
+GIS_DIR = os.path.join(os.path.dirname(__file__), "ArcGis")
+
+
+def slugify_layer_name(name: str) -> str:
+    normalized = unicodedata.normalize('NFKD', name)
+    normalized = ''.join(c for c in normalized if unicodedata.category(c) != 'Mn')
+    normalized = re.sub(r'[^A-Za-z0-9]+', '_', normalized)
+    return normalized.strip('_') or name
+
+
+def get_gis_layers():
+    if not os.path.isdir(GIS_DIR):
+        return []
+    layer_files = sorted(glob.glob(os.path.join(GIS_DIR, '*.shp')))
+    seen = set()
+    layers = []
+    for path in layer_files:
+        title = os.path.splitext(os.path.basename(path))[0]
+        layer_id = slugify_layer_name(title)
+        if layer_id in seen:
+            suffix = 1
+            while f"{layer_id}_{suffix}" in seen:
+                suffix += 1
+            layer_id = f"{layer_id}_{suffix}"
+        seen.add(layer_id)
+        layers.append({
+            'id': layer_id,
+            'title': title,
+            'filename': os.path.basename(path),
+        })
+    return layers
+
+
+def find_gis_layer_path(layer_id: str) -> str:
+    for info in get_gis_layers():
+        if info['id'] == layer_id:
+            return os.path.join(GIS_DIR, info['filename'])
+    raise HTTPException(status_code=404, detail=f"Layer GIS '{layer_id}' não encontrada")
 
 
 # Column name normalization mapping
@@ -391,6 +435,89 @@ def get_filtros(
     rotas     = [r[0] for r in _q('rota').with_entities(Ponto.rota).distinct().order_by(Ponto.rota).all() if r[0]]
     gc_values = [r[0] for r in _q('gc').with_entities(Ponto.gc).distinct().all() if r[0]]
     return {"tipos_faturamento": tipos, "cidades": cidades, "macros": macros, "grupos": grupos, "gc_values": gc_values, "rotas": rotas}
+
+
+@app.get('/api/gis/layers')
+def get_gis_layers_endpoint():
+    """List available shapefile layers from backend/ArcGis."""
+    return {"layers": get_gis_layers()}
+
+
+@app.get('/api/gis/layer/{layer_id}')
+def get_gis_layer(layer_id: str):
+    """Return GeoJSON for the requested GIS layer."""
+    shapefile_path = find_gis_layer_path(layer_id)
+    if not os.path.exists(shapefile_path):
+        raise HTTPException(status_code=404, detail=f"Arquivo shapefile não encontrado: {shapefile_path}")
+    try:
+        gdf = gpd.read_file(shapefile_path)
+        if gdf.crs is not None and getattr(gdf.crs, 'to_epsg', lambda: None)() != 4326:
+            gdf = gdf.to_crs(epsg=4326)
+        geojson = json.loads(gdf.to_json())
+        return geojson
+    except Exception as e:
+        logger.exception('Erro ao ler shapefile %s', shapefile_path)
+        raise HTTPException(status_code=500, detail=f"Erro ao processar shapefile: {str(e)}")
+
+
+@app.get('/api/gis/layer/{layer_id}/info')
+def get_gis_layer_info(layer_id: str):
+    """Return summary information for the requested GIS layer."""
+    shapefile_path = find_gis_layer_path(layer_id)
+    if not os.path.exists(shapefile_path):
+        raise HTTPException(status_code=404, detail=f"Arquivo shapefile não encontrado: {shapefile_path}")
+    try:
+        gdf = gpd.read_file(shapefile_path)
+        
+        n_rows, n_cols = gdf.shape
+        geom_types = gdf.geometry.type.value_counts().to_dict()
+        bounds = gdf.total_bounds.tolist()
+        
+        # Colunas com informações
+        columns_info = []
+        for col in gdf.columns:
+            if col != 'geometry':
+                columns_info.append({
+                    'name': col,
+                    'type': str(gdf[col].dtype),
+                    'non_null': int(gdf[col].notna().sum()),
+                    'unique': int(gdf[col].nunique()),
+                })
+        
+        return {
+            'layer_id': layer_id,
+            'filename': os.path.basename(shapefile_path),
+            'shape': [n_rows, n_cols],
+            'crs': str(gdf.crs) if gdf.crs else None,
+            'geometry_types': geom_types,
+            'bounds': bounds,
+            'columns': columns_info,
+        }
+    except Exception as e:
+        logger.exception('Erro ao analisar shapefile %s', shapefile_path)
+        raise HTTPException(status_code=500, detail=f"Erro ao processar shapefile: {str(e)}")
+
+
+@app.get('/api/gis/layer/{layer_id}/statistics')
+def get_gis_layer_statistics(layer_id: str):
+    """Return detailed statistics for the requested GIS layer."""
+    shapefile_path = find_gis_layer_path(layer_id)
+    if not os.path.exists(shapefile_path):
+        raise HTTPException(status_code=404, detail=f"Arquivo shapefile não encontrado: {shapefile_path}")
+    try:
+        from gis_analyzer import GisAnalyzer
+        
+        analyzer = GisAnalyzer(shapefile_path)
+        if not analyzer.load_data():
+            raise HTTPException(status_code=500, detail="Erro ao carregar shapefile")
+        
+        analyzer.inspect_data()
+        analyzer.process_geometry()
+        
+        return analyzer.get_summary()
+    except Exception as e:
+        logger.exception('Erro ao analisar shapefile %s', shapefile_path)
+        raise HTTPException(status_code=500, detail=f"Erro ao processar shapefile: {str(e)}")
 
 
 @app.get("/api/stats")

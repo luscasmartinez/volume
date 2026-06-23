@@ -11,6 +11,7 @@ class Ponto(Base):
         Index("ix_pontos_vol_fat",    "vol_fat"),
         Index("ix_pontos_num_ligacao", "num_ligacao"),
         Index("ix_pontos_macro",       "macro"),
+        
     )
 
     id = Column(Integer, primary_key=True, index=True)
@@ -21,6 +22,7 @@ class Ponto(Base):
     num_medidor = Column(String, nullable=True)
     tipo_faturamento = Column(String, nullable=True)
     cidade = Column(String, nullable=True)
+    bairro = Column(String, nullable=True)
     macro = Column(String, nullable=True)
     micro = Column(String, nullable=True)
     referencia = Column(String, nullable=True)
@@ -36,6 +38,26 @@ class Ponto(Base):
     valor_a = Column(Float, nullable=True)
     qtd_eco1 = Column(Float, nullable=True)
     qtd_eco2 = Column(Float, nullable=True)
+    qtd_eco_totais = Column(Float, nullable=True)
+    qtd_eco_res = Column(Float, nullable=True)
+    qtd_eco_com = Column(Float, nullable=True)
+    qtd_eco_ind = Column(Float, nullable=True)
+    qtd_eco_out = Column(Float, nullable=True)
+    qtd_eco_pub = Column(Float, nullable=True)
     vol_fat = Column(Float, nullable=True)
+    volume_total = Column(Float, nullable=True)
+    volume_01 = Column(Float, nullable=True)
+    volume_02 = Column(Float, nullable=True)
+    volume_03 = Column(Float, nullable=True)
+    volume_04 = Column(Float, nullable=True)
+    volume_05 = Column(Float, nullable=True)
+    volume_06 = Column(Float, nullable=True)
+    volume_07 = Column(Float, nullable=True)
+    volume_08 = Column(Float, nullable=True)
+    volume_09 = Column(Float, nullable=True)
+    volume_10 = Column(Float, nullable=True)
+    volume_11 = Column(Float, nullable=True)
+    volume_12 = Column(Float, nullable=True)
+    deriva_faturar = Column(Float, nullable=True)
     gc = Column(String, nullable=True)
     rota = Column(String, nullable=True)

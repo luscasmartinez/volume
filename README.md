@@ -66,7 +66,7 @@ http://localhost:8000
 - Ou arraste o arquivo diretamente para a área de upload
 - Aguarde a confirmação de importação (os pontos aparecerão automaticamente no mapa)
 
-> A planilha deve conter as colunas: `NUM_LIGACAO`, `NOM_CLIENTE`, `CATEGORIA`, `COD_GRUPO`, `NUM_MEDIDOR`, `TIPO_FATURAMENTO`, `CIDADE`, `MACRO`, `MICRO`, `REFERENCIA`, `SIT_LIGACAO`, `COD_LATITUDE`, `COD_LONGITUDE`, `ISGRANDECONSUMIDOR`, `SUMVALOR`, `VALOR_D1`, `VALOR_D2`, `VALOR_IN1`, `VALOR_IN2`, `VALOR_A`, `QTD_ECO1`, `QTD_ECO2`, `VOL_FAT__ÁGUAS_FAT_`
+> A planilha deve conter as colunas: `NUM_LIGACAO`, `NOM_CLIENTE`, `CATEGORIA`, `COD_GRUPO`, `NUM_MEDIDOR`, `TIPO_FATURAMENTO`, `CIDADE`, `MACRO`, `MICRO`, `REFERENCIA`, `SIT_LIGACAO`, `COD_LATITUDE`, `COD_LONGITUDE`, `ISGRANDECONSUMIDOR`, `SUMVALOR`, `VALOR_D1`, `VALOR_D2`, `VALOR_IN1`, `VALOR_IN2`, `VALOR_A`, `QTD_ECO1`, `QTD_ECO2`, `VOL_FAT__ÁGUAS_FAT_`, e agora também reconhece `LATITUDE`, `LONGITUDE`, `ECO_TOTAIS`, `SUMQTD_ECO_RES`, `SUMQTD_ECO_COM`, `SUMQTD_ECO_IND`, `SUMQTD_ECO_OUT`, `SUMQTD_ECO_PUB`, `VOLUME_01_JA`, `VOLUME_02_FE`, `VOLUME`, `DERIVA_FATURAR` e colunas mensais `VOLUME_XX_*`.
 
 ### 2. Navegar no mapa
 
@@ -153,6 +153,7 @@ volume/
 | `GET` | `/api/heatmap` | Dados para o mapa de calor |
 | `GET` | `/api/filtros` | Valores únicos para os dropdowns de filtro |
 | `GET` | `/api/stats` | Estatísticas gerais e por tipo |
+| `GET` | `/api/volume-comparison` | Totais e comparação entre volumes importados |
 
 Documentação interativa da API disponível em:
 ```

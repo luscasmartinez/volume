@@ -90,6 +90,7 @@
             transition: width .3s;
         }
         .sidebar.collapsed { width: 0; overflow: hidden; }
+        .sidebar-right { border-right: none; border-left: 1px solid #334155; }
 
         .sidebar-section {
             padding: 14px 16px;
@@ -207,6 +208,27 @@
             display: inline-block; width: 8px; height: 8px;
             border-radius: 50%; margin-right: 4px;
         }
+        .section-header {
+            display: flex; align-items: center; justify-content: space-between; gap: 10px;
+            margin-bottom: 10px;
+        }
+        .section-header .section-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+        .bairro-accordion { display: flex; flex-direction: column; gap: 10px; }
+        .bairro-item {
+            background: #0f172a; border: 1px solid #334155; border-radius: 10px;
+            overflow: hidden;
+        }
+        .bairro-item summary {
+            list-style: none; cursor: pointer; display: flex; justify-content: space-between;
+            align-items: center; gap: 10px; padding: 10px 12px; font-size: 12px;
+            color: #e2e8f0; background: #111827; flex-wrap: wrap;
+        }
+        .bairro-item[open] summary { background: #1e293b; }
+        .bairro-item summary::-webkit-details-marker { display: none; }
+        .bairro-item .bairro-title { font-weight: 700; flex: 0 1 auto; }
+        .bairro-item .bairro-meta { color: #94a3b8; font-size: 11px; white-space: nowrap; flex: 0 1 auto; }
+        .bairro-item .bairro-details { padding: 0 12px 10px; }
+        .bairro-item .bairro-details .no-data { color: #94a3b8; padding: 8px 0; font-size: 12px; }
 
         .sidebar-scroll {
             flex: 1; overflow-y: auto; scrollbar-width: thin;
@@ -913,12 +935,68 @@
                     </select>
                 </div>
                 <div class="filter-group">
+                    <label>Mês faturado</label>
+                    <select id="filtroMesFaturado">
+                        <option value="">Nenhum</option>
+                        <option value="1">Jan</option>
+                        <option value="2">Fev</option>
+                        <option value="3">Mar</option>
+                        <option value="4">Abr</option>
+                        <option value="5">Mai</option>
+                        <option value="6">Jun</option>
+                        <option value="7">Jul</option>
+                        <option value="8">Ago</option>
+                        <option value="9">Set</option>
+                        <option value="10">Out</option>
+                        <option value="11">Nov</option>
+                        <option value="12">Dez</option>
+                    </select>
+                </div>
+                <div class="filter-group">
+                    <label>Comparar com</label>
+                    <select id="filtroCompararCom">
+                        <option value="">Nenhum</option>
+                        <option value="deveria">Deveria Faturar</option>
+                        <option value="1">Jan</option>
+                        <option value="2">Fev</option>
+                        <option value="3">Mar</option>
+                        <option value="4">Abr</option>
+                        <option value="5">Mai</option>
+                        <option value="6">Jun</option>
+                        <option value="7">Jul</option>
+                        <option value="8">Ago</option>
+                        <option value="9">Set</option>
+                        <option value="10">Out</option>
+                        <option value="11">Nov</option>
+                        <option value="12">Dez</option>
+                    </select>
+                </div>
+                <div class="filter-group">
                     <label>Grande Consumidor (GC)</label>
                     <select id="filtroGC">
                         <option value="">Ambos</option>
                         <option value="SIM">SIM</option>
-                        <option value="NÃO">NÃO</option>
+                        <option value="NAO">NÃO</option>
                     </select>
+                </div>
+                <div class="filter-group">
+                    <label>Filtrar por Variação</label>
+                    <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;font-size:12px">
+                        <label><input type="checkbox" class="variacaoFilter" value="muito_menos_75" checked> Muito menos (&lt;-75%)</label>
+                        <label><input type="checkbox" class="variacaoFilter" value="muito_menos" checked> Muito menos (-75% a -50%)</label>
+                        <label><input type="checkbox" class="variacaoFilter" value="menos" checked> Menos (-50% a -30%)</label>
+                        <label><input type="checkbox" class="variacaoFilter" value="pouco_menos" checked> Pouco menos (-30% a -10%)</label>
+                        <label><input type="checkbox" class="variacaoFilter" value="esperado" checked> Esperado (-2% a +2%)</label>
+                        <label><input type="checkbox" class="variacaoFilter" value="pouco_mais" checked> Pouco mais (+2% a +10%)</label>
+                        <label><input type="checkbox" class="variacaoFilter" value="mais" checked> Mais (+10% a +30%)</label>
+                        <label><input type="checkbox" class="variacaoFilter" value="muito_mais" checked> Muito mais (+30% a +75%)</label>
+                        <label><input type="checkbox" class="variacaoFilter" value="muito_mais_75" checked> Muito mais (&gt;+75%)</label>
+                        <label><input type="checkbox" class="variacaoFilter" value="nenhum" checked> Sem comparação</label>
+                    </div>
+                </div>
+                <div class="filter-group">
+                    <label>Tamanho dos pontos: <strong id="pointSizeVal">7</strong></label>
+                    <input type="range" id="markerSize" min="3" max="15" value="7" step="1" style="width:100%;accent-color:#10b981;margin-top:4px">
                 </div>
                 <div class="filter-group">
                     <label>Máx. pontos: <strong id="maxPontosVal">30.000</strong></label>
@@ -929,6 +1007,9 @@
                 </button>
                 <button class="btn btn-success" style="width:100%;margin-top:6px" id="btnExtrairAnalitico">
                     📊 Extrair Analítico
+                </button>
+                <button class="btn btn-outline" style="width:100%;margin-top:6px" id="btnExtrairExcel">
+                    ⬇ Exportar Excel
                 </button>
             </div>
 
@@ -959,34 +1040,37 @@
                 <!-- Heatmap sub-controls (shown only when toggle is on) -->
                 <div id="heatmapControls" style="display:none;margin-top:10px;border-top:1px solid #334155;padding-top:10px">
                     <div class="filter-group" style="margin-bottom:8px">
-                        <label style="font-size:12px">🏙️ Cidade (mapa de calor)</label>
+                        <label style="font-size:12px">🏙️ Cidade (mapa de deficiência)</label>
                         <select id="heatmapCidade" style="width:100%;margin-top:4px">
                             <option value="">Todas as cidades</option>
                         </select>
                     </div>
-                    <div class="filter-group">
-                        <label style="font-size:12px">Vol. mínimo (m³)</label>
-                        <!-- slider + manual input side-by-side -->
-                        <div style="display:flex;align-items:center;gap:6px;margin-top:6px">
-                            <input type="range" id="heatmapVolMin" min="0" max="500" value="0" step="10"
-                                   style="flex:1;accent-color:#f97316;">
-                            <input type="number" id="heatmapVolMinInput" min="0" max="999999"
-                                   value="0" placeholder="m³"
-                                   style="width:72px;background:#0f172a;border:1px solid #334155;
-                                          border-radius:6px;color:#f97316;padding:4px 6px;
-                                          font-size:12px;font-family:inherit;outline:none;
-                                          text-align:right;"
-                                   onfocus="this.style.borderColor='#f97316'"
-                                   onblur="this.style.borderColor='#334155'">
-                        </div>
-                        <div id="heatmapVolMinVal" style="display:none"></div>
-                        <div id="heatmapSliderHints" style="display:flex;justify-content:space-between;font-size:10px;color:#64748b;margin-top:3px">
-                            <span>0</span><span style="color:#f59e0b">250</span><span>500</span>
-                        </div>
+                    
+                    <div class="filter-group" style="margin-bottom:8px">
+                        <label style="font-size:12px">📊 Defasagem mínima (%)</label>
+                        <input type="number" id="heatmapVarianceMin" min="-100" max="1000" value="-100"
+                               style="width:100%;margin-top:4px;background:#0f172a;border:1px solid #334155;
+                                      border-radius:6px;color:#f97316;padding:6px;font-size:12px;outline:none"
+                               onfocus="this.style.borderColor='#f97316'"
+                               onblur="this.style.borderColor='#334155'">
                     </div>
+                    
+                    <div class="filter-group" style="margin-bottom:8px">
+                        <label style="font-size:12px">📊 Defasagem máxima (%)</label>
+                        <input type="number" id="heatmapVarianceMax" min="-100" max="1000" value="1000"
+                               style="width:100%;margin-top:4px;background:#0f172a;border:1px solid #334155;
+                                      border-radius:6px;color:#f97316;padding:6px;font-size:12px;outline:none"
+                               onfocus="this.style.borderColor='#f97316'"
+                               onblur="this.style.borderColor='#334155'">
+                    </div>
+                    
+                    <p style="font-size:11px;color:#94a3b8;margin-top:8px">
+                        O mapa mostra deficiências (diferença de volume) usando os filtros de comparação acima.<br>
+                        Use negativo para mostrar apenas defasagens (ex: -75 para ≤-75%).
+                    </p>
                     <button class="btn btn-primary" id="btnAtualizarHeatmap"
                             style="width:100%;margin-top:8px;font-size:12px;padding:6px">
-                        🔄 Atualizar mapa de calor
+                        🔄 Atualizar mapa de deficiência
                     </button>
                 </div>
             </div>
@@ -1006,17 +1090,22 @@
 
             <!-- Legenda -->
             <div class="sidebar-section">
-                <h3>🎨 Legenda — Tipo Faturamento</h3>
-                <div class="legend-items" id="legendItems">
-                    <div class="legend-item"><div class="legend-dot" style="background:#ff0000"></div> ÁGUA</div>
-                    <div class="legend-item"><div class="legend-dot" style="background:#008000"></div> ÁGUA + ESGOTO</div>
-                    <div class="legend-item"><div class="legend-dot" style="background:#ffa500"></div> ÁGUA + T.E.E</div>
-                    <div class="legend-item"><div class="legend-dot" style="background:#0000ff"></div> ÁGUA + ESGOTO + T.E.E</div>
-                    <div class="legend-item"><div class="legend-dot" style="background:#8b4513"></div> T.E.E</div>
-                    <div class="legend-item"><div class="legend-dot" style="background:#d4af37"></div> Grande Consumidor (GC)</div>
-                    <div class="legend-item"><div class="legend-dot" style="background:#808080"></div> Outros</div>
+                <h3>🎨 Legenda — Variação</h3>
+                <div class="legend-items" style="font-size:12px">
+                    <div class="legend-item"><div class="legend-dot" style="background:#4c0519"></div> Muito menos (&lt;-75%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#7f1d1d"></div> Muito menos (-75% a -50%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#dc2626"></div> Menos (-50% a -30%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#ea580c"></div> Pouco menos (-30% a -10%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#f97316"></div> Pouco menos (-10% a -2%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#eab308"></div> Esperado (-2% a +2%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#02eeff"></div> Pouco mais (+2% a +10%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#02a2ff"></div> Mais (+10% a +30%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#044df6"></div> Muito mais (+30% a +75%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#2106ee"></div> Muito mais (&gt;+75%)</div>
+                    <div class="legend-item"><div class="legend-dot" style="background:#94a3b8"></div> Sem comparação</div>
                 </div>
             </div>
+            
 
             <!-- Tabela por tipo -->
             <div class="sidebar-section" id="tipoBreakdownSection" style="display:none">
@@ -1036,6 +1125,42 @@
         </div>
         </div><!-- /tabFiltros -->
 
+    </div>
+
+    <!-- RIGHT SIDEBAR -->
+    <div class="sidebar sidebar-right" id="bairroSidebar">
+        <div class="sidebar-scroll">
+            <div class="sidebar-section" id="bairroBreakdownSection" style="display:none">
+                <div class="section-header">
+                    <h3>🏘️ Clientes por Bairro</h3>
+                    <div class="section-actions">
+                        <button type="button" class="btn btn-sm btn-outline" id="btnExpandBairros">Abrir todos</button>
+                        <button type="button" class="btn btn-sm btn-outline" id="btnCollapseBairros">Fechar todos</button>
+                    </div>
+                </div>
+                <div class="bairro-accordion" id="bairroAccordion"></div>
+            </div>
+
+            <div class="sidebar-section" id="faixaBreakdownSection" style="display:none">
+                <h3>📊 Clientes por Faixa</h3>
+                <table class="tipo-table" style="width:100%;font-size:12px">
+                    <thead>
+                        <tr><th>Faixa</th><th style="text-align:right">Clientes</th><th style="text-align:right">Vol. m³</th></tr>
+                    </thead>
+                    <tbody id="faixaBreakdownBody"></tbody>
+                </table>
+            </div>
+
+            <div class="sidebar-section" id="bairroFaixaBreakdownSection" style="display:none">
+                <h3>🏘️ Bairro x Faixa de Variação</h3>
+                <table class="tipo-table" style="width:100%;font-size:12px">
+                    <thead>
+                        <tr><th>Bairro</th><th>Faixa</th><th style="text-align:right">Clientes</th></tr>
+                    </thead>
+                    <tbody id="bairroFaixaBreakdownBody"></tbody>
+                </table>
+            </div>
+        </div>
     </div>
 
     <!-- MAP -->
@@ -1291,18 +1416,82 @@ function classifyPonto(tipo, isGrande) {
     return 'OUTROS';
 }
 
+const MONTH_LABELS = ['', 'Jan', 'Fev', 'Mar', 'Abr', 'Mai', 'Jun', 'Jul', 'Ago', 'Set', 'Out', 'Nov', 'Dez'];
+
 function getClassColor(classe) { return CLASS_COLORS[classe] || '#808080'; }
 function getDynamicColor(tipo, isGrande) { return getClassColor(classifyPonto(tipo, isGrande)); }
 
-function createCircleMarker(lat, lng, color) {
+function getVarianceCategory(variancePct) {
+    if (variancePct == null || Number.isNaN(variancePct)) return 'nenhum';
+    const pct = Number(variancePct);
+    if (pct < -75) return 'muito_menos_75';
+    if (pct < -50) return 'muito_menos';
+    if (pct < -30) return 'menos';
+    if (pct < -10) return 'pouco_menos';
+    if (pct <= 2) return 'esperado';
+    if (pct < 10) return 'pouco_mais';
+    if (pct < 30) return 'mais';
+    if (pct < 75) return 'muito_mais';
+    return 'muito_mais_75';
+}
+
+function getVarianceColor(variancePct) {
+    if (variancePct == null || Number.isNaN(variancePct)) return '#94a3b8';  // gray-400
+    const pct = Number(variancePct);
+    if (pct < -75) return '#4c0519';  // very dark red
+    if (pct < -50) return '#7f1d1d';  // dark red
+    if (pct < -30) return '#dc2626';  // red
+    if (pct < -10) return '#ea580c';  // orange-red
+    if (pct < -2) return '#f97316';   // orange
+    if (pct <= 2) return '#eab308';   // yellow-green
+    if (pct < 10) return '#02eeff';   // cyan (Pouco mais +2% a +10%)
+    if (pct < 30) return '#02a2ff';   // blue (Mais +10% a +30%)
+    if (pct < 75) return '#044df6';   // darker blue (Muito mais +30% a +75%)
+    return '#2106ee';  // very dark blue (Muito mais >+75%)
+}
+
+function getDeviationColor(variancePct) {
+    return getVarianceColor(variancePct);
+}
+
+function createCircleMarker(lat, lng, color, radius = 7) {
     return L.circleMarker([lat, lng], {
-        radius: 7,
+        radius,
         fillColor: color,
         color: 'rgba(255,255,255,0.4)',
         weight: 1.5,
         opacity: 1,
         fillOpacity: 0.85,
     });
+}
+
+function createStarMarker(lat, lng, color, size = 12) {
+    const starHtml = `
+        <div style="width:${size * 2}px; height:${size * 2}px; display:flex; align-items:center; justify-content:center;">
+            <div style="width:${size}px; height:${size}px; background:${color};
+                        clip-path: polygon(50% 0%, 61% 35%, 98% 35%, 68% 57%, 79% 91%, 50% 70%,
+                                          21% 91%, 32% 57%, 2% 35%, 39% 35%);
+                        border: 1.5px solid rgba(255,255,255,0.8); box-shadow: 0 0 4px rgba(0,0,0,0.25);
+                        opacity: 0.95;"></div>
+        </div>`;
+    return L.marker([lat, lng], {
+        icon: L.divIcon({
+            className: 'gc-star-icon',
+            html: starHtml,
+            iconSize: [size * 2, size * 2],
+            iconAnchor: [size, size],
+            popupAnchor: [0, -size],
+        }),
+        riseOnHover: true,
+    });
+}
+
+function createPontoMarker(lat, lng, color, size, isGC) {
+    const activeGC = String(isGC || '').toUpperCase() === 'SIM';
+    if (activeGC) {
+        return createStarMarker(lat, lng, color, Math.max(8, size));
+    }
+    return createCircleMarker(lat, lng, color, size);
 }
 
 // ── MAP INIT ──────────────────────────────────────────────
@@ -1669,7 +1858,9 @@ function populateSelect(id, items, allLabel = 'Todos') {
 
 async function loadStats() {
     try {
-        const res = await fetch(`${API}/api/stats`);
+        const params = buildParams();
+        const url = `${API}/api/stats?${params}`;
+        const res = await fetch(url);
         const data = await res.json();
         document.getElementById('statTotal').textContent = data.total.toLocaleString('pt-BR');
         document.getElementById('statCoords').textContent = data.com_coords.toLocaleString('pt-BR');
@@ -1708,6 +1899,99 @@ async function loadStats() {
             tbody.appendChild(tr);
         });
         document.getElementById('tipoBreakdownSection').style.display = '';
+
+        const bairroSection = document.getElementById('bairroBreakdownSection');
+        const bairroAccordion = document.getElementById('bairroAccordion');
+        const expandBairrosBtn = document.getElementById('btnExpandBairros');
+        const collapseBairrosBtn = document.getElementById('btnCollapseBairros');
+        if (data.by_bairro && data.by_bairro.length > 0) {
+            const bairroFaixaMap = {};
+            (data.by_bairro_faixa || []).forEach(item => {
+                if (!bairroFaixaMap[item.bairro]) {
+                    bairroFaixaMap[item.bairro] = [];
+                }
+                bairroFaixaMap[item.bairro].push(item);
+            });
+
+            bairroAccordion.innerHTML = '';
+            data.by_bairro.forEach(item => {
+                const details = document.createElement('details');
+                details.className = 'bairro-item';
+                const summary = document.createElement('summary');
+                const volSelected = (item.vol_selected || 0).toLocaleString('pt-BR', {maximumFractionDigits:1});
+                const volCompared = (item.vol_compared || 0).toLocaleString('pt-BR', {maximumFractionDigits:1});
+                const volDiff = (item.vol_diff || 0).toLocaleString('pt-BR', {maximumFractionDigits:1});
+                summary.innerHTML = `
+                    <span class="bairro-title">${item.bairro}</span>
+                    <span class="bairro-meta">${item.qtd.toLocaleString('pt-BR')} clientes</span>
+                    <span class="bairro-meta" style="color:#3b82f6">⬤ ${volSelected} m³</span>
+                    <span class="bairro-meta" style="color:#10b981">⬤ ${volCompared} m³</span>
+                    <span class="bairro-meta" style="color:#f59e0b">⬘ ${volDiff} m³</span>`;
+                details.appendChild(summary);
+
+                const rows = bairroFaixaMap[item.bairro] || [];
+                const body = document.createElement('div');
+                body.className = 'bairro-details';
+                if (rows.length > 0) {
+                    let html = '<table class="tipo-table" style="width:100%;font-size:12px"><thead><tr><th>Faixa</th><th style="text-align:right">Clientes</th></tr></thead><tbody>';
+                    rows.forEach(row => {
+                        html += `
+                            <tr>
+                                <td>${row.faixa}</td>
+                                <td style="text-align:right">${row.qtd.toLocaleString('pt-BR')}</td>
+                            </tr>`;
+                    });
+                    html += '</tbody></table>';
+                    body.innerHTML = html;
+                } else {
+                    body.innerHTML = '<div class="no-data">Sem detalhamento por faixa para este bairro.</div>';
+                }
+                details.appendChild(body);
+                bairroAccordion.appendChild(details);
+            });
+            bairroSection.style.display = '';
+            if (expandBairrosBtn) expandBairrosBtn.disabled = false;
+            if (collapseBairrosBtn) collapseBairrosBtn.disabled = false;
+        } else {
+            bairroAccordion.innerHTML = '';
+            bairroSection.style.display = 'none';
+        }
+
+        const faixaBody = document.getElementById('faixaBreakdownBody');
+        const faixaSection = document.getElementById('faixaBreakdownSection');
+        if (data.by_faixa && data.by_faixa.length > 0) {
+            faixaBody.innerHTML = '';
+            data.by_faixa.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${item.faixa}</td>
+                    <td style="text-align:right">${item.qtd.toLocaleString('pt-BR')}</td>
+                    <td style="text-align:right">${(item.total_vol || 0).toLocaleString('pt-BR', {maximumFractionDigits:0})}</td>`;
+                faixaBody.appendChild(tr);
+            });
+            faixaSection.style.display = '';
+        } else {
+            faixaBody.innerHTML = '';
+            faixaSection.style.display = 'none';
+        }
+
+        const bairroFaixaBody = document.getElementById('bairroFaixaBreakdownBody');
+        const bairroFaixaSection = document.getElementById('bairroFaixaBreakdownSection');
+        if (data.by_bairro_faixa && data.by_bairro_faixa.length > 0) {
+            bairroFaixaBody.innerHTML = '';
+            data.by_bairro_faixa.forEach(item => {
+                const tr = document.createElement('tr');
+                tr.innerHTML = `
+                    <td>${item.bairro}</td>
+                    <td>${item.faixa}</td>
+                    <td style="text-align:right">${item.qtd.toLocaleString('pt-BR')}</td>`;
+                bairroFaixaBody.appendChild(tr);
+            });
+            bairroFaixaSection.style.display = '';
+        } else {
+            bairroFaixaBody.innerHTML = '';
+            bairroFaixaSection.style.display = 'none';
+        }
     } catch (err) {
         console.error('Failed to load stats:', err);
     }
@@ -1737,14 +2021,22 @@ async function loadPontos() {
 
 function buildParams() {
     const params = new URLSearchParams();
-    const tipo   = document.getElementById('filtroTipo').value;
-    const cidade = document.getElementById('filtroCidade').value;
-    const macro  = document.getElementById('filtroMacro').value;
-    const grupo  = document.getElementById('filtroGrupo').value;
-    const rota   = document.getElementById('filtroRota').value;
-    const gc     = document.getElementById('filtroGC').value;
-    const limit  = document.getElementById('maxPontos')?.value || '30000';
+    const tipo        = document.getElementById('filtroTipo').value;
+    const cidade      = document.getElementById('filtroCidade').value;
+    const macro       = document.getElementById('filtroMacro').value;
+    const grupo       = document.getElementById('filtroGrupo').value;
+    const rota        = document.getElementById('filtroRota').value;
+    const mesFaturado = document.getElementById('filtroMesFaturado').value;
+    const compararCom = document.getElementById('filtroCompararCom').value;
+    const gc          = document.getElementById('filtroGC').value;
+    const limit       = document.getElementById('maxPontos')?.value || '30000';
     if (tipo)   params.append('tipo_faturamento', tipo);
+    if (mesFaturado) params.append('selected_month', mesFaturado);
+    if (compararCom === 'deveria') {
+        params.append('compare_with_deveria', 'true');
+    } else if (compararCom) {
+        params.append('comparison_month', compararCom);
+    }
     if (cidade) params.append('cidade', cidade);
     if (macro)  params.append('macro', macro);
     if (grupo)  params.append('grupo', grupo);
@@ -1758,12 +2050,16 @@ function renderMarkers(pontos) {
     markerClusterGroup.clearLayers();
     markersLayer.clearLayers();
     allMarkers = [];
+    const selectedCategories = Array.from(document.querySelectorAll('.variacaoFilter:checked')).map(el => el.value);
+    const markerSize = Number(document.getElementById('markerSize')?.value || 7);
 
     pontos.forEach(p => {
         if (!p.lat || !p.lng) return;
-        const color = getDynamicColor(p.tipo_faturamento, p.is_grande);
-        const marker = createCircleMarker(p.lat, p.lng, color);
-        marker.bindPopup(buildPopup(p), { maxWidth: 280 });
+        const category = getVarianceCategory(p.variance_pct);
+        if (!selectedCategories.includes(category)) return;
+        const color = getVarianceColor(p.variance_pct);
+        const marker = createPontoMarker(p.lat, p.lng, color, markerSize, p.is_grande || p.gc);
+        marker.bindPopup(buildPopup(p), { maxWidth: 320 });
         marker._pontoId = p.id;
         marker._pontoData = p;
         allMarkers.push(marker);
@@ -1782,18 +2078,23 @@ function renderMarkers(pontos) {
 
 function buildPopup(p) {
     const classe = classifyPonto(p.tipo_faturamento, p.is_grande);
-    const color  = getClassColor(classe);
-    const volFmt = p.vol_fat != null ? Number(p.vol_fat).toLocaleString('pt-BR', {maximumFractionDigits: 2}) : '—';
+    const classColor  = getClassColor(classe);
+    const actualVolFmt = p.actual_value != null ? Number(p.actual_value).toLocaleString('pt-BR', {maximumFractionDigits: 2}) : '—';
     const sumFmt = p.sum_valor != null ? `R$ ${Number(p.sum_valor).toLocaleString('pt-BR', {minimumFractionDigits:2})}` : '—';
+    const expectedVolFmt = p.expected_value != null ? Number(p.expected_value).toLocaleString('pt-BR', {maximumFractionDigits: 2}) : '—';
+    const varianceFmt = p.variance != null ? Number(p.variance).toLocaleString('pt-BR', {maximumFractionDigits: 2, signDisplay: 'always'}) : '—';
+    const variancePctFmt = p.variance_pct != null ? `${Number(p.variance_pct).toLocaleString('pt-BR', {maximumFractionDigits: 1, signDisplay: 'always'})}%` : '—';
+    const selectedLabel = p.selected_month_label && p.selected_month_label !== 'Nenhum' ? p.selected_month_label : 'Vol. faturado';
+    const compareLabel = p.comparison_month_label || 'Nenhum';
     return `<div class="popup-content">
         <h4>💧 ${esc(p.nom_cliente) || 'Cliente'}</h4>
         <div class="popup-row">
             <span class="key">Tipo</span>
-            <span class="val"><span class="tipo-badge" style="background:${color}22;color:${color};border:1px solid ${color}">${esc(p.tipo_faturamento) || '—'}</span></span>
+            <span class="val"><span class="tipo-badge" style="background:${classColor}22;color:${classColor};border:1px solid ${classColor}">${esc(p.tipo_faturamento) || '—'}</span></span>
         </div>
         <div class="popup-row">
             <span class="key">Classe</span>
-            <span class="val"><span class="tipo-badge" style="background:${color}33;color:${color};border:1px solid ${color};font-weight:700">${esc(classe)}</span></span>
+            <span class="val"><span class="tipo-badge" style="background:${classColor}33;color:${classColor};border:1px solid ${classColor};font-weight:700">${esc(classe)}</span></span>
         </div>
         <div class="popup-row"><span class="key">Nº Ligação</span><span class="val">${esc(p.num_ligacao) || '—'}</span></div>
         <div class="popup-row"><span class="key">Cidade</span><span class="val">${esc(p.cidade) || '—'}</span></div>
@@ -1805,7 +2106,9 @@ function buildPopup(p) {
         <div class="popup-row"><span class="key">Referência</span><span class="val">${esc(p.referencia) || '—'}</span></div>
         <div class="popup-row"><span class="key">Categoria</span><span class="val">${esc(p.categoria) || '—'}</span></div>
         <div class="popup-row"><span class="key">Situação</span><span class="val">${esc(p.sit_ligacao) || '—'}</span></div>
-        <div class="popup-row"><span class="key">Vol. Fat. (m³)</span><span class="val">${volFmt}</span></div>
+        <div class="popup-row"><span class="key">Volume selecionado</span><span class="val">${selectedLabel}: ${actualVolFmt} m³</span></div>
+        <div class="popup-row"><span class="key">Comparado</span><span class="val">${compareLabel}: ${expectedVolFmt} m³</span></div>
+        <div class="popup-row"><span class="key">Diferença</span><span class="val">${varianceFmt} (${variancePctFmt})</span></div>
         <div class="popup-row"><span class="key">Valor Total</span><span class="val">${sumFmt}</span></div>
         <div class="popup-row" style="border-top:1px solid #334155;margin-top:4px;padding-top:4px">
             <span class="key">Coords</span>
@@ -1818,18 +2121,28 @@ function updateStatusBar(visible, total) {
     document.getElementById('statusPontos').textContent =
         visible < total ? `${visible.toLocaleString('pt-BR')} de ${total.toLocaleString('pt-BR')}` : visible.toLocaleString('pt-BR');
 
-    const tipo   = document.getElementById('filtroTipo').value;
-    const cidade  = document.getElementById('filtroCidade').value;
-    const macro   = document.getElementById('filtroMacro').value;
-    const grupo   = document.getElementById('filtroGrupo').value;
-    const rota    = document.getElementById('filtroRota').value;
-    const gc      = document.getElementById('filtroGC').value;
+    const tipo        = document.getElementById('filtroTipo').value;
+    const cidade      = document.getElementById('filtroCidade').value;
+    const macro       = document.getElementById('filtroMacro').value;
+    const grupo       = document.getElementById('filtroGrupo').value;
+    const rota        = document.getElementById('filtroRota').value;
+    const mesFaturado = document.getElementById('filtroMesFaturado').value;
+    const compararCom = document.getElementById('filtroCompararCom').value;
+    const gc          = document.getElementById('filtroGC').value;
     const parts = [];
     if (tipo)   parts.push(`Tipo: ${tipo}`);
     if (cidade) parts.push(`Cidade: ${cidade}`);
     if (macro)  parts.push(`Macro: ${macro}`);
     if (grupo)  parts.push(`Grupo: ${grupo}`);
     if (rota)   parts.push(`Rota: ${rota}`);
+    if (mesFaturado) parts.push(`Mês faturado: ${MONTH_LABELS[Number(mesFaturado)]}`);
+    if (compararCom) {
+        if (compararCom === 'deveria') {
+            parts.push('Comparar com: Deveria Faturar');
+        } else {
+            parts.push(`Comparar com: ${MONTH_LABELS[Number(compararCom)]}`);
+        }
+    }
     if (gc)     parts.push(`GC: ${gc}`);
     document.getElementById('statusFiltro').textContent = parts.length ? parts.join(' | ') : 'Nenhum';
 }
@@ -1840,39 +2153,44 @@ async function loadHeatmapIfActive() {
 }
 
 async function activateHeatmap() {
-    setLoading(true, 'Carregando mapa de calor...');
+    setLoading(true, 'Carregando mapa de deficiência...');
     try {
-        // Build heatmap query params from its own controls
+        // Build heatmap query params - now using comparison parameters instead of vol_min
         const heatParams = new URLSearchParams();
         const hCidade = document.getElementById('heatmapCidade')?.value || '';
-        const hVolMin = document.getElementById('heatmapVolMinInput')?.value
-                     || document.getElementById('heatmapVolMin')?.value
-                     || '0';
+        const mesFaturado = document.getElementById('filtroMesFaturado')?.value || '';
+        const compararCom = document.getElementById('filtroCompararCom')?.value || '';
+        const varianceMin = Number(document.getElementById('heatmapVarianceMin')?.value || '-100');
+        const varianceMax = Number(document.getElementById('heatmapVarianceMax')?.value || '1000');
+        
         if (hCidade) heatParams.append('cidade', hCidade);
-        if (Number(hVolMin) > 0) heatParams.append('vol_min', hVolMin);
+        if (mesFaturado) heatParams.append('selected_month', mesFaturado);
+        if (compararCom === 'deveria') {
+            heatParams.append('compare_with_deveria', 'true');
+        } else if (compararCom) {
+            heatParams.append('comparison_month', compararCom);
+        }
+        heatParams.append('variance_pct_min', varianceMin);
+        heatParams.append('variance_pct_max', varianceMax);
 
         const res = await fetch(`${API}/api/heatmap?${heatParams}`);
         const data = await res.json();
         if (heatLayer) { map.removeLayer(heatLayer); heatLayer = null; }
-        if (data.length === 0) { toast('Nenhum ponto com vol. faturado acima do mínimo.', 'warning'); return; }
+        if (data.length === 0) { toast('Nenhum ponto com variância de volume.', 'warning'); return; }
 
-        // Use reduce() — NOT Math.max(...data) which overflows the call stack with large arrays.
-        // Use log1p scale so high outliers don't make low-volume points invisible.
-        // Points > 100 m³ will naturally score higher and appear hotter.
-        const VOL_THRESHOLD = 100;
+        // Use log scale to better visualize variance distribution
         const maxLog = data.reduce((m, d) => Math.max(m, Math.log1p(d[2])), 0);
-        const logThreshold = Math.log1p(VOL_THRESHOLD) / (maxLog || 1);
         const normalized = data.map(d => [d[0], d[1], Math.log1p(d[2]) / (maxLog || 1)]);
 
-        // Gradient: below threshold stays cool (blue→green), above threshold heats up fast
+        // Gradient: cool colors for low variance, hot colors for high variance (deficiency)
         heatLayer = L.heatLayer(normalized, {
             radius: 22, blur: 18, maxZoom: 16, minOpacity: 0.3,
             gradient: {
-                0.0: '#0ea5e9',                        // azul – consumo muito baixo
-                [logThreshold * 0.8]: '#22c55e',       // verde – abaixo de 100
-                [logThreshold]: '#facc15',             // amarelo – limiar 100 m³
-                [Math.min(logThreshold * 1.3, 0.90)]: '#f97316', // laranja – acima de 100
-                1.0: '#ef4444',                        // vermelho – consumo muito alto
+                0.0: '#0ea5e9',                        // azul – pouca deficiência
+                0.25: '#22c55e',                       // verde – deficiência baixa
+                0.5: '#facc15',                        // amarelo – deficiência média
+                0.75: '#f97316',                       // laranja – deficiência alta
+                1.0: '#ef4444',                        // vermelho – deficiência muito alta
             }
         }).addTo(map);
 
@@ -1882,11 +2200,15 @@ async function activateHeatmap() {
             try { map.fitBounds(L.latLngBounds(latLngs).pad(0.1)); } catch {}
         }
 
-        const filterInfo = [hCidade && `Cidade: ${hCidade}`, Number(hVolMin) > 0 && `Vol ≥ ${hVolMin} m³`]
-            .filter(Boolean).join(' | ');
+        const filterParts = [];
+        if (hCidade) filterParts.push(`Cidade: ${hCidade}`);
+        if (varianceMin !== -100 || varianceMax !== 1000) {
+            filterParts.push(`Defasagem: ${varianceMin}% a ${varianceMax}%`);
+        }
+        const filterInfo = filterParts.join(' | ');
         document.getElementById('statusHeatmap').textContent = filterInfo ? `Ativo (${filterInfo})` : 'Ativo';
         document.getElementById('btnHeatmapToggle').classList.add('active');
-        toast(`Mapa de calor — ${data.length.toLocaleString('pt-BR')} pontos${filterInfo ? ` (${filterInfo})` : ''}`, 'success');
+        toast(`Mapa de deficiência — ${data.length.toLocaleString('pt-BR')} pontos${filterInfo ? ` (${filterInfo})` : ''}`, 'success');
     } catch (err) {
         toast('Erro ao carregar mapa de calor', 'error');
     } finally {
@@ -1913,30 +2235,12 @@ document.getElementById('toggleHeatmap').addEventListener('change', async functi
 
 document.getElementById('btnAtualizarHeatmap')?.addEventListener('click', () => activateHeatmap());
 
-// ── Slider ↔ Number input sync + debounced heatmap refresh ───────────────
-let _heatSliderTimer = null;
-
-function _syncHeatControls(val) {
-    const slider   = document.getElementById('heatmapVolMin');
-    const numInput = document.getElementById('heatmapVolMinInput');
-    const clamped  = Math.max(0, Math.min(Number(slider?.max || 999999), val));
-    if (slider)   slider.value   = clamped;
-    if (numInput) numInput.value = clamped;
-    if (!heatmapActive) return;
-    clearTimeout(_heatSliderTimer);
-    _heatSliderTimer = setTimeout(() => activateHeatmap(), 600);
-}
-
-document.getElementById('heatmapVolMin')?.addEventListener('input', function () {
-    _syncHeatControls(Number(this.value));
+document.getElementById('heatmapVarianceMin')?.addEventListener('change', () => {
+    if (heatmapActive) activateHeatmap();
 });
 
-document.getElementById('heatmapVolMinInput')?.addEventListener('input', function () {
-    _syncHeatControls(Number(this.value));
-});
-// Also update on blur in case user types and presses Tab / clicks away
-document.getElementById('heatmapVolMinInput')?.addEventListener('change', function () {
-    _syncHeatControls(Number(this.value));
+document.getElementById('heatmapVarianceMax')?.addEventListener('change', () => {
+    if (heatmapActive) activateHeatmap();
 });
 
 document.getElementById('btnHeatmapToggle').addEventListener('click', async () => {
@@ -1975,7 +2279,22 @@ document.getElementById('toggleCluster').addEventListener('change', async functi
     }
 });
 
-document.getElementById('btnAplicarFiltros').addEventListener('click', () => loadPontos());
+document.getElementById('btnAplicarFiltros').addEventListener('click', async () => {
+    await loadStats();
+    await loadPontos();
+    if (heatmapActive) await activateHeatmap();
+});
+document.getElementById('btnExpandBairros')?.addEventListener('click', () => {
+    document.querySelectorAll('#bairroAccordion details').forEach(el => el.open = true);
+});
+document.getElementById('btnCollapseBairros')?.addEventListener('click', () => {
+    document.querySelectorAll('#bairroAccordion details').forEach(el => el.open = false);
+});
+document.querySelectorAll('.variacaoFilter').forEach(el => el.addEventListener('change', () => loadPontos()));
+document.getElementById('markerSize').addEventListener('input', function () {
+    document.getElementById('pointSizeVal').textContent = this.value;
+});
+document.getElementById('markerSize').addEventListener('change', () => loadPontos());
 document.getElementById('btnRefresh').addEventListener('click', () => loadAll());
 
 document.getElementById('btnResetFilters').addEventListener('click', () => {
@@ -1985,6 +2304,11 @@ document.getElementById('btnResetFilters').addEventListener('click', () => {
     document.getElementById('filtroGrupo').value = '';
     document.getElementById('filtroRota').value = '';
     document.getElementById('filtroGC').value = '';
+    document.getElementById('filtroMesFaturado').value = '';
+    document.getElementById('filtroCompararCom').value = '';
+    document.querySelectorAll('.variacaoFilter').forEach(el => el.checked = true);
+    const pointSize = document.getElementById('markerSize');
+    if (pointSize) { pointSize.value = 7; document.getElementById('pointSizeVal').textContent = '7'; }
     const slider = document.getElementById('maxPontos');
     if (slider) { slider.value = 30000; document.getElementById('maxPontosVal').textContent = '30.000'; }
     loadFiltros();   // restore all filter options to full list
@@ -2019,7 +2343,10 @@ async function refreshFilters(changedField) {
     }
 }
 
-document.getElementById('filtroCidade').addEventListener('change', () => refreshFilters('cidade'));
+document.getElementById('filtroCidade').addEventListener('change', async () => {
+    await refreshFilters('cidade');
+    await loadStats();
+});
 document.getElementById('filtroTipo').addEventListener('change',   () => refreshFilters('tipo'));
 document.getElementById('filtroMacro').addEventListener('change',  () => refreshFilters('macro'));
 document.getElementById('filtroGrupo').addEventListener('change',  () => refreshFilters('grupo'));
@@ -2413,12 +2740,14 @@ function _csvCell(val) {
 }
 
 async function downloadAnaliticoCSV() {
-    const cidade = document.getElementById('filtroCidade').value;
-    const grupo  = document.getElementById('filtroGrupo').value;
-    const rota   = document.getElementById('filtroRota').value;
-    const tipo   = document.getElementById('filtroTipo').value;
-    const macro  = document.getElementById('filtroMacro').value;
-    const gc     = document.getElementById('filtroGC').value;
+    const cidade      = document.getElementById('filtroCidade').value;
+    const grupo       = document.getElementById('filtroGrupo').value;
+    const rota        = document.getElementById('filtroRota').value;
+    const tipo        = document.getElementById('filtroTipo').value;
+    const macro       = document.getElementById('filtroMacro').value;
+    const mesFaturado  = document.getElementById('filtroMesFaturado').value;
+    const compararCom  = document.getElementById('filtroCompararCom').value;
+    const gc          = document.getElementById('filtroGC').value;
 
     if (!cidade && !grupo && !rota) {
         toast('Selecione ao menos Cidade, Grupo ou Rota para extrair o analítico', 'warning');
@@ -2431,6 +2760,12 @@ async function downloadAnaliticoCSV() {
     if (rota)   params.append('rota',   rota);
     if (tipo)   params.append('tipo_faturamento', tipo);
     if (macro)  params.append('macro',  macro);
+    if (mesFaturado) params.append('selected_month', mesFaturado);
+    if (compararCom === 'deveria') {
+        params.append('compare_with_deveria', 'true');
+    } else if (compararCom) {
+        params.append('comparison_month', compararCom);
+    }
     if (gc)     params.append('gc',     gc);
 
     const btn = document.getElementById('btnExtrairAnalitico');
@@ -2460,6 +2795,7 @@ async function downloadAnaliticoCSV() {
         if (rota)   lines.push(`Rota:,${_csvCell(rota)}`);
         if (tipo)   lines.push(`Tipo Faturamento:,${_csvCell(tipo)}`);
         if (macro)  lines.push(`Macro:,${_csvCell(macro)}`);
+        if (mes)    lines.push(`Mês comparado:,${_csvCell(MONTH_LABELS[Number(mes)])}`);
         lines.push('');
         lines.push(`Total Ligações:,${d.total}`);
         lines.push(`Vol. Faturado (m³):,${(d.total_vol || 0).toFixed(2).replace('.', ',')}`);
@@ -2518,8 +2854,8 @@ async function downloadAnaliticoCSV() {
         lines.push('');
         lines.push('REGISTROS DETALHADOS');
         const headers = [
-            'num_ligacao','nom_cliente','tipo_faturamento','cidade','macro','micro',
-            'cod_grupo','rota','gc','sit_ligacao','categoria','vol_fat','sum_valor','is_grande'
+            'num_ligacao','nom_cliente','tipo_faturamento','cidade','bairro','macro','micro',
+            'cod_grupo','rota','gc','sit_ligacao','categoria','vol_fat','deveria','variance','variance_pct','sum_valor','is_grande'
         ];
         lines.push(headers.join(','));
         d.pontos.forEach(p => {
@@ -2552,7 +2888,41 @@ async function downloadAnaliticoCSV() {
     }
 }
 
+async function downloadAnaliticoXLSX() {
+    const btn = document.getElementById('btnExtrairExcel');
+    const originalText = btn.textContent;
+    btn.textContent = '⏳ Gerando...';
+    btn.disabled = true;
+
+    try {
+        const res = await fetch(`${API}/api/pontos/xlsx`);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        const disposition = res.headers.get('Content-Disposition');
+        if (disposition) {
+            const match = /filename="?([^";]+)"?/.exec(disposition);
+            a.download = match ? match[1] : `analitico_${new Date().toISOString().slice(0,10)}.xlsx`;
+        } else {
+            a.download = `analitico_${new Date().toISOString().slice(0,10)}.xlsx`;
+        }
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        toast('Arquivo Excel gerado com sucesso', 'success');
+    } catch (err) {
+        toast(`Erro ao gerar Excel: ${err.message}`, 'error');
+    } finally {
+        btn.textContent = originalText;
+        btn.disabled = false;
+    }
+}
+
 document.getElementById('btnExtrairAnalitico')?.addEventListener('click', downloadAnaliticoCSV);
+document.getElementById('btnExtrairExcel')?.addEventListener('click', downloadAnaliticoXLSX);
 
 // ── GIS ANALYSIS ──────────────────────────────────────────
 document.getElementById('btnGisAnalysis')?.addEventListener('click', function () {
@@ -2698,7 +3068,7 @@ function exportAnaliticoCSV() {
     const data = overlay._csvData;
     if (!data || data.length === 0) return;
 
-    const headers = ['num_ligacao','nom_cliente','tipo_faturamento','cidade','macro','micro','cod_grupo','rota','gc','sit_ligacao','categoria','vol_fat','sum_valor','is_grande'];
+    const headers = ['num_ligacao','nom_cliente','tipo_faturamento','cidade','macro','micro','cod_grupo','rota','gc','sit_ligacao','categoria','vol_fat','deveria','variance','variance_pct','sum_valor','is_grande'];
     const rows = data.map(p => headers.map(h => {
         const v = p[h] != null ? String(p[h]) : '';
         return v.includes(',') || v.includes('"') || v.includes('\n') ? `"${v.replace(/"/g,'""')}"` : v;

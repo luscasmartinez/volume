@@ -7,11 +7,13 @@ import json
 import logging
 import re
 import unicodedata
+from collections import defaultdict
+from enum import Enum
 from typing import List, Optional
 from fastapi import FastAPI, UploadFile, File, Depends, HTTPException, Query
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 import geopandas as gpd
@@ -27,6 +29,43 @@ logger = logging.getLogger(__name__)
 MAX_UPLOAD_SIZE = 50 * 1024 * 1024  # 50 MB
 
 Base.metadata.create_all(bind=engine)
+
+
+def ensure_database_columns():
+    """Add new SQLite columns if the table schema is older than the model."""
+    db_path = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "volume.db"))
+    if not os.path.exists(db_path):
+        return
+    with engine.connect() as conn:
+        existing = {row['name'] for row in conn.execute(text("PRAGMA table_info(pontos)")).mappings()}
+        new_columns = [
+            ("qtd_eco_totais", "FLOAT"),
+            ("qtd_eco_res", "FLOAT"),
+            ("qtd_eco_com", "FLOAT"),
+            ("qtd_eco_ind", "FLOAT"),
+            ("qtd_eco_out", "FLOAT"),
+            ("qtd_eco_pub", "FLOAT"),
+            ("volume_01", "FLOAT"),
+            ("volume_02", "FLOAT"),
+            ("volume_03", "FLOAT"),
+            ("volume_04", "FLOAT"),
+            ("volume_05", "FLOAT"),
+            ("volume_06", "FLOAT"),
+            ("volume_07", "FLOAT"),
+            ("volume_08", "FLOAT"),
+            ("volume_09", "FLOAT"),
+            ("volume_10", "FLOAT"),
+            ("volume_11", "FLOAT"),
+            ("volume_12", "FLOAT"),
+            ("volume_total", "FLOAT"),
+            ("deriva_faturar", "FLOAT"),
+            ("bairro", "VARCHAR"),
+        ]
+        for name, col_type in new_columns:
+            if name not in existing:
+                conn.execute(text(f"ALTER TABLE pontos ADD COLUMN {name} {col_type}"))
+
+ensure_database_columns()
 
 app = FastAPI(title="Volume Platform API", version="1.0.0")
 app.include_router(top_clientes_router)
@@ -109,6 +148,7 @@ COLUMN_MAP = {
     "NUM_MEDIDOR": "num_medidor",
     "TIPO_FATURAMENTO": "tipo_faturamento",
     "CIDADE": "cidade",
+    "BAIRRO": "bairro",
     "MACRO": "macro",
     "MICRO": "micro",
     "REFERENCIA": "referencia",
@@ -151,10 +191,21 @@ COLUMN_MAP = {
     "QTD_ECONOMIAS_FAT_ESGOTO": "qtd_eco2",
     "QTD_ECO1": "qtd_eco1",
     "QTD_ECO2": "qtd_eco2",
+    "ECO_TOTAIS": "qtd_eco_totais",
+    "SUMQTD_ECO_RES": "qtd_eco_res",
+    "SUMQTD_ECO_COM": "qtd_eco_com",
+    "SUMQTD_ECO_IND": "qtd_eco_ind",
+    "SUMQTD_ECO_OUT": "qtd_eco_out",
+    "SUMQTD_ECO_PUB": "qtd_eco_pub",
     # Volume — actual: Vol_Fat__Águas_Fat_
     "VOL_FAT__AGUAS_FAT_": "vol_fat",
     "VOL_FAT__AGUAS_FAT": "vol_fat",
     "VOL_FAT": "vol_fat",
+    "VOLUME": "volume_total",
+    "VOLUME_01_JA": "volume_01",
+    "VOLUME_02_FE": "volume_02",
+    "DERIVA_FATURAR": "deriva_faturar",
+    "DEVERIA_FATURAR": "deriva_faturar",
     # GC filter (column: GC, values "SIM" / "NÃO")
     "GC": "gc",
     "GRANDE_CONSUMIDOR": "gc",
@@ -164,10 +215,12 @@ COLUMN_MAP = {
 
 
 def normalize_col(name: str) -> str:
-    """Normalize column name: uppercase, strip spaces, remove special chars."""
+    """Normalize column name: uppercase, replace spaces and punctuation with underscores."""
     normalized = unicodedata.normalize("NFD", str(name))
     normalized = "".join(c for c in normalized if unicodedata.category(c) != "Mn")
-    return normalized.upper().strip().replace(" ", "_").replace("(", "").replace(")", "").replace("-", "_")
+    normalized = normalized.upper().strip()
+    normalized = re.sub(r"[^A-Z0-9]+", "_", normalized)
+    return normalized.strip("_")
 
 
 @app.get("/", response_class=HTMLResponse)
@@ -205,13 +258,29 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             rename_map[col] = target
             already_mapped.add(target)
 
+    # Fallback mapping for month-style volume columns not explicitly listed
+    for col in normalized_cols:
+        if col in rename_map:
+            continue
+        month_match = re.match(r"^VOLUME_(\d{1,2})(?:_.*)?$", col)
+        if month_match:
+            target = f"volume_{int(month_match.group(1)):02d}"
+            if target not in already_mapped:
+                rename_map[col] = target
+                already_mapped.add(target)
+
     df = df.rename(columns=rename_map)
 
     # Coerce numeric columns to float (they come as object/str with dtype=object)
     NUMERIC_FIELDS = [
         'cod_latitude', 'cod_longitude', 'sum_valor',
         'valor_d1', 'valor_d2', 'valor_in1', 'valor_in2', 'valor_a',
-        'qtd_eco1', 'qtd_eco2', 'vol_fat',
+        'qtd_eco1', 'qtd_eco2', 'qtd_eco_totais', 'qtd_eco_res', 'qtd_eco_com',
+        'qtd_eco_ind', 'qtd_eco_out', 'qtd_eco_pub',
+        'vol_fat', 'volume_total', 'volume_01', 'volume_02',
+        'volume_03', 'volume_04', 'volume_05', 'volume_06', 'volume_07',
+        'volume_08', 'volume_09', 'volume_10', 'volume_11', 'volume_12',
+        'deriva_faturar',
     ]
     for field in NUMERIC_FIELDS:
         if field in df.columns:
@@ -263,16 +332,7 @@ async def upload_excel(file: UploadFile = File(...), db: Session = Depends(get_d
             records.append(data)
 
         if records:
-            db.execute(text(
-                "INSERT INTO pontos (num_ligacao, nom_cliente, categoria, cod_grupo, num_medidor, "
-                "tipo_faturamento, cidade, macro, micro, referencia, sit_ligacao, is_grande, "
-                "cod_latitude, cod_longitude, sum_valor, valor_d1, valor_d2, valor_in1, valor_in2, "
-                "valor_a, qtd_eco1, qtd_eco2, vol_fat, gc, rota)"
-                " VALUES (:num_ligacao, :nom_cliente, :categoria, :cod_grupo, :num_medidor, "
-                ":tipo_faturamento, :cidade, :macro, :micro, :referencia, :sit_ligacao, :is_grande, "
-                ":cod_latitude, :cod_longitude, :sum_valor, :valor_d1, :valor_d2, :valor_in1, :valor_in2, "
-                ":valor_a, :qtd_eco1, :qtd_eco2, :vol_fat, :gc, :rota)"
-            ), records)
+            db.execute(Ponto.__table__.insert(), records)
             db.commit()
     except Exception as e:
         db.rollback()
@@ -312,6 +372,134 @@ async def diagnostico_excel(file: UploadFile = File(...)):
 
 
 
+class CompareMode(str, Enum):
+    deveria = "deveria"
+    month = "month"
+
+
+def get_month_volume(ponto: Ponto, month: Optional[int]) -> Optional[float]:
+    if month is None:
+        return None
+    return getattr(ponto, f"volume_{month:02d}", None)
+
+
+def resolve_actual_volume(ponto: Ponto, selected_month: Optional[int] = None) -> Optional[float]:
+    if selected_month is not None:
+        return get_month_volume(ponto, selected_month)
+    return ponto.vol_fat
+
+
+def resolve_expected_volume(ponto: Ponto, compare_with_deveria: bool = False, comparison_month: Optional[int] = None) -> Optional[float]:
+    if compare_with_deveria:
+        return ponto.deriva_faturar
+    if comparison_month is not None:
+        return get_month_volume(ponto, comparison_month)
+    return None
+
+
+def format_variance(actual: Optional[float], expected: Optional[float]) -> Optional[float]:
+    if actual is None or expected is None:
+        return None
+    return float(actual - expected)
+
+
+def format_variance_pct(actual: Optional[float], expected: Optional[float]) -> Optional[float]:
+    if actual is None or expected is None or expected == 0:
+        return None
+    return float((actual - expected) / expected * 100)
+
+
+def get_variance_category_label(actual: Optional[float], expected: Optional[float]) -> str:
+    if actual is None or expected is None or expected == 0:
+        return 'Sem comparação'
+    pct = (actual - expected) / expected * 100
+    if pct < -75:
+        return 'Muito menos (<-75%)'
+    if pct < -50:
+        return 'Muito menos (-75% a -50%)'
+    if pct < -30:
+        return 'Menos (-50% a -30%)'
+    if pct < -10:
+        return 'Pouco menos (-30% a -10%)'
+    if pct <= 2:
+        return 'Esperado (-2% a +2%)'
+    if pct < 10:
+        return 'Pouco mais (+2% a +10%)'
+    if pct < 30:
+        return 'Mais (+10% a +30%)'
+    if pct < 75:
+        return 'Muito mais (+30% a +75%)'
+    return 'Muito mais (>+75%)'
+
+
+def categorize_vol_fat(vol: Optional[float]) -> str:
+    if vol is None or (isinstance(vol, float) and math.isnan(vol)):
+        return 'Sem volume'
+    if vol < 10:
+        return '0 - 10 m³'
+    if vol < 50:
+        return '10 - 50 m³'
+    if vol < 100:
+        return '50 - 100 m³'
+    if vol < 300:
+        return '100 - 300 m³'
+    if vol < 500:
+        return '300 - 500 m³'
+    if vol < 1000:
+        return '500 - 1.000 m³'
+    return '> 1.000 m³'
+
+
+def build_analitico_row(
+    ponto: Ponto,
+    selected_month: Optional[int],
+    comparison_month: Optional[int],
+    compare_with_deveria: bool,
+) -> dict:
+    actual = resolve_actual_volume(ponto, selected_month)
+    expected = resolve_expected_volume(ponto, compare_with_deveria, comparison_month)
+    return {
+        "num_ligacao":    ponto.num_ligacao,
+        "nom_cliente":    ponto.nom_cliente,
+        "tipo_faturamento": ponto.tipo_faturamento,
+        "cidade":         ponto.cidade,
+        "bairro":         ponto.bairro,
+        "macro":          ponto.macro,
+        "micro":          ponto.micro,
+        "cod_grupo":      ponto.cod_grupo,
+        "rota":           ponto.rota,
+        "gc":             ponto.gc,
+        "sit_ligacao":    ponto.sit_ligacao,
+        "categoria":      ponto.categoria,
+        "vol_fat":        ponto.vol_fat,
+        "sum_valor":      ponto.sum_valor,
+        "is_grande":      ponto.is_grande,
+        "selected_month": selected_month,
+        "comparison_month": comparison_month,
+        "compare_with_deveria": compare_with_deveria,
+        "selected_month_label": f"Mês {selected_month:02d}" if selected_month else "Nenhum",
+        "comparison_month_label": compare_with_deveria
+            and 'Deveria Faturar' or (f"Mês {comparison_month:02d}" if comparison_month else 'Nenhum'),
+        "actual_value":    actual,
+        "expected_value":  expected,
+        "deveria":         ponto.deriva_faturar,
+        "variance":        format_variance(actual, expected),
+        "variance_pct":    format_variance_pct(actual, expected),
+    }
+
+
+def build_analitico_rows(
+    pontos: List[Ponto],
+    selected_month: Optional[int],
+    comparison_month: Optional[int],
+    compare_with_deveria: bool,
+) -> List[dict]:
+    return [
+        build_analitico_row(p, selected_month, comparison_month, compare_with_deveria)
+        for p in pontos
+    ]
+
+
 @app.get("/api/pontos")
 def get_pontos(
     db: Session = Depends(get_db),
@@ -321,9 +509,17 @@ def get_pontos(
     grupo: Optional[str] = Query(None),
     rota: Optional[str] = Query(None),
     gc: Optional[str] = Query(None),  # "SIM" | "NAO" for gc column
+    selected_month: Optional[int] = Query(None, ge=1, le=12),
+    comparison_month: Optional[int] = Query(None, ge=1, le=12),
+    compare_with_deveria: bool = Query(False),
+    compare_month_legacy: Optional[int] = Query(None, alias="compare_month", ge=1, le=12),
     limit: int = Query(30000, le=100000),
     offset: int = Query(0),
 ):
+    if selected_month is None and compare_month_legacy is not None:
+        selected_month = compare_month_legacy
+    if compare_with_deveria:
+        comparison_month = None
     query = db.query(Ponto).filter(
         Ponto.cod_latitude.isnot(None),
         Ponto.cod_longitude.isnot(None),
@@ -338,10 +534,12 @@ def get_pontos(
         query = query.filter(Ponto.cod_grupo == grupo)
     if rota:
         query = query.filter(Ponto.rota == rota)
-    if gc == "SIM":
-        query = query.filter(Ponto.gc.ilike("SIM"))
-    elif gc == "NAO":
-        query = query.filter(~Ponto.gc.ilike("SIM"))
+    if gc:
+        gc_norm = gc.strip().upper().replace('Ã', 'A').replace('Õ', 'O')
+        if gc_norm == "SIM":
+            query = query.filter(Ponto.gc.ilike("SIM"))
+        elif gc_norm == "NAO":
+            query = query.filter(~Ponto.gc.ilike("SIM"))
 
     total = query.count()
     pontos = query.offset(offset).limit(limit).all()
@@ -368,6 +566,43 @@ def get_pontos(
                 "gc": p.gc,
                 "is_grande": p.is_grande,
                 "sum_valor": p.sum_valor,
+                "qtd_eco_totais": p.qtd_eco_totais,
+                "qtd_eco_res": p.qtd_eco_res,
+                "qtd_eco_com": p.qtd_eco_com,
+                "qtd_eco_ind": p.qtd_eco_ind,
+                "qtd_eco_out": p.qtd_eco_out,
+                "qtd_eco_pub": p.qtd_eco_pub,
+                "volume_total": p.volume_total,
+                "volume_01": p.volume_01,
+                "volume_02": p.volume_02,
+                "volume_03": p.volume_03,
+                "volume_04": p.volume_04,
+                "volume_05": p.volume_05,
+                "volume_06": p.volume_06,
+                "volume_07": p.volume_07,
+                "volume_08": p.volume_08,
+                "volume_09": p.volume_09,
+                "volume_10": p.volume_10,
+                "volume_11": p.volume_11,
+                "volume_12": p.volume_12,
+                "deriva_faturar": p.deriva_faturar,
+                "selected_month": selected_month,
+                "comparison_month": comparison_month,
+                "compare_with_deveria": compare_with_deveria,
+                "selected_month_label": f"Mês {selected_month:02d}" if selected_month else "Nenhum",
+                "comparison_month_label": compare_with_deveria
+                    and 'Deveria Faturar' or (f"Mês {comparison_month:02d}" if comparison_month else 'Nenhum'),
+                "actual_value": resolve_actual_volume(p, selected_month),
+                "expected_value": resolve_expected_volume(p, compare_with_deveria, comparison_month),
+                "deveria": p.deriva_faturar,
+                "variance": format_variance(
+                    resolve_actual_volume(p, selected_month),
+                    resolve_expected_volume(p, compare_with_deveria, comparison_month),
+                ),
+                "variance_pct": format_variance_pct(
+                    resolve_actual_volume(p, selected_month),
+                    resolve_expected_volume(p, compare_with_deveria, comparison_month),
+                ),
             }
             for p in pontos
         ],
@@ -379,29 +614,42 @@ def get_heatmap(
     db: Session = Depends(get_db),
     limit: int = Query(50000, ge=1000, le=500000),
     cidade: Optional[str] = Query(None),
-    vol_min: float = Query(0, ge=0),
+    selected_month: Optional[int] = Query(None, ge=1, le=12),
+    comparison_month: Optional[int] = Query(None, ge=1, le=12),
+    compare_with_deveria: bool = Query(False),
+    variance_pct_min: float = Query(-100, ge=-100, le=1000),
+    variance_pct_max: float = Query(1000, ge=-100, le=1000),
 ):
-    """Returns lat/lng/weight points for heatmap based on vol_fat.
-    Supports filtering by cidade and minimum vol_fat threshold.
-    Samples up to `limit` points ordered by ID descending.
+    """Returns lat/lng/weight points for heatmap based on volume variance (deficiência).
+    Shows areas with higher variance to identify neighborhoods with supply issues.
+    Supports filtering by cidade, comparison modes, and variance percentage range.
     """
-    from sqlalchemy import func as sqlfunc
-    query = (
-        db.query(Ponto.cod_latitude, Ponto.cod_longitude, Ponto.vol_fat)
-        .filter(
-            Ponto.cod_latitude.isnot(None),
-            Ponto.cod_longitude.isnot(None),
-            Ponto.vol_fat.isnot(None),
-            Ponto.vol_fat > vol_min,
-        )
+    query = db.query(Ponto).filter(
+        Ponto.cod_latitude.isnot(None),
+        Ponto.cod_longitude.isnot(None),
     )
     if cidade:
         query = query.filter(Ponto.cidade.contains(cidade))
+    
     pontos = query.order_by(Ponto.id.desc()).limit(limit).all()
-    return [
-        [float(p.cod_latitude), float(p.cod_longitude), float(p.vol_fat)]
-        for p in pontos
-    ]
+    
+    # Build heatmap data with variance as weight, filtered by variance percentage
+    result = []
+    for p in pontos:
+        actual = resolve_actual_volume(p, selected_month)
+        expected = resolve_expected_volume(p, compare_with_deveria, comparison_month)
+        
+        if actual is not None and expected is not None and expected > 0:
+            # Calculate variance percentage
+            variance_pct = ((actual - expected) / expected) * 100
+            
+            # Filter by variance percentage range
+            if variance_pct_min <= variance_pct <= variance_pct_max:
+                # Use absolute variance value for heatmap intensity
+                variance = abs(actual - expected)
+                result.append([float(p.cod_latitude), float(p.cod_longitude), float(variance)])
+    
+    return result
 
 
 @app.get("/api/filtros")
@@ -521,28 +769,229 @@ def get_gis_layer_statistics(layer_id: str):
 
 
 @app.get("/api/stats")
-def get_stats(db: Session = Depends(get_db)):
+def get_stats(
+    db: Session = Depends(get_db),
+    tipo_faturamento: Optional[str] = Query(None),
+    cidade: Optional[str] = Query(None),
+    macro: Optional[str] = Query(None),
+    grupo: Optional[str] = Query(None),
+    rota: Optional[str] = Query(None),
+    gc: Optional[str] = Query(None),
+    selected_month: Optional[int] = Query(None, ge=1, le=12),
+    comparison_month: Optional[int] = Query(None, ge=1, le=12),
+    compare_with_deveria: bool = Query(False),
+    compare_month_legacy: Optional[int] = Query(None, alias="compare_month", ge=1, le=12),
+):
     from sqlalchemy import func as sqlfunc
-    total = db.query(Ponto).count()
-    com_coords = db.query(Ponto).filter(
+
+    if selected_month is None and compare_month_legacy is not None:
+        selected_month = compare_month_legacy
+    if compare_with_deveria:
+        comparison_month = None
+
+    def _normalize_gc(value: str) -> str:
+        return value.strip().upper().replace('Ã', 'A').replace('Õ', 'O')
+
+    def _apply_filters(query):
+        if tipo_faturamento:
+            query = query.filter(Ponto.tipo_faturamento == tipo_faturamento)
+        if cidade:
+            query = query.filter(Ponto.cidade == cidade)
+        if macro:
+            query = query.filter(Ponto.macro == macro)
+        if grupo:
+            query = query.filter(Ponto.cod_grupo == grupo)
+        if rota:
+            query = query.filter(Ponto.rota == rota)
+        if gc:
+            gc_norm = _normalize_gc(gc)
+            if gc_norm == 'SIM':
+                query = query.filter(Ponto.gc.ilike('SIM'))
+            elif gc_norm == 'NAO':
+                query = query.filter(~Ponto.gc.ilike('SIM'))
+        return query
+
+    filtered_q = _apply_filters(db.query(Ponto))
+    total = filtered_q.count()
+    coord_q = _apply_filters(db.query(Ponto)).filter(
         Ponto.cod_latitude.isnot(None), Ponto.cod_longitude.isnot(None)
-    ).count()
-    result = db.execute(
-        text("SELECT tipo_faturamento, COUNT(*) as qtd, SUM(vol_fat) as total_vol FROM pontos GROUP BY tipo_faturamento ORDER BY qtd DESC")
-    ).fetchall()
-    by_tipo = [{"tipo": r[0] or "N/A", "qtd": r[1], "total_vol": r[2] or 0} for r in result]
-    vol_fat_max_row = db.query(sqlfunc.max(Ponto.vol_fat)).filter(Ponto.vol_fat.isnot(None)).scalar()
-    vol_fat_max = float(vol_fat_max_row) if vol_fat_max_row else 0
-    total_vol_row = db.query(sqlfunc.sum(Ponto.vol_fat)).scalar()
-    total_valor_row = db.query(sqlfunc.sum(Ponto.sum_valor)).scalar()
+    )
+    com_coords = coord_q.count()
+
+    by_tipo = [
+        {
+            'tipo': r[0] or 'N/A',
+            'qtd': r[1],
+            'total_vol': r[2] or 0,
+        }
+        for r in _apply_filters(db.query(Ponto))
+            .with_entities(
+                Ponto.tipo_faturamento,
+                sqlfunc.count(Ponto.id),
+                sqlfunc.coalesce(sqlfunc.sum(Ponto.vol_fat), 0),
+            )
+            .group_by(Ponto.tipo_faturamento)
+            .order_by(sqlfunc.count(Ponto.id).desc())
+            .all()
+    ]
+
+    points = _apply_filters(db.query(Ponto)).all()
+    faixa_counts = defaultdict(int)
+    faixa_volumes = defaultdict(float)
+    bairro_faixa_counts = defaultdict(lambda: defaultdict(int))
+    bairro_volumes = defaultdict(lambda: {
+        'qtd': 0,
+        'vol_selected': 0.0,  # volume do mês selecionado
+        'vol_compared': 0.0,  # volume comparado
+        'vol_diff': 0.0,      # diferença
+    })
+
+    for p in points:
+        faixa = categorize_vol_fat(p.vol_fat)
+        faixa_counts[faixa] += 1
+        faixa_volumes[faixa] += float(p.vol_fat or 0)
+
+        category = get_variance_category_label(
+            resolve_actual_volume(p, selected_month),
+            resolve_expected_volume(p, compare_with_deveria, comparison_month),
+        )
+        bairro_label = (p.bairro or '').strip() or 'N/A'
+        bairro_faixa_counts[bairro_label][category] += 1
+        
+        # Agregar volumes por bairro
+        actual_vol = resolve_actual_volume(p, selected_month)
+        expected_vol = resolve_expected_volume(p, compare_with_deveria, comparison_month)
+        
+        bairro_volumes[bairro_label]['qtd'] += 1
+        if actual_vol is not None:
+            bairro_volumes[bairro_label]['vol_selected'] += float(actual_vol)
+        if expected_vol is not None:
+            bairro_volumes[bairro_label]['vol_compared'] += float(expected_vol)
+        if actual_vol is not None and expected_vol is not None:
+            bairro_volumes[bairro_label]['vol_diff'] += float(actual_vol - expected_vol)
+
+    faixa_order = [
+        'Sem volume',
+        '0 - 10 m³',
+        '10 - 50 m³',
+        '50 - 100 m³',
+        '100 - 300 m³',
+        '300 - 500 m³',
+        '500 - 1.000 m³',
+        '> 1.000 m³',
+    ]
+    by_faixa = [
+        {
+            'faixa': faixa,
+            'qtd': faixa_counts[faixa],
+            'total_vol': faixa_volumes[faixa],
+        }
+        for faixa in faixa_order
+        if faixa_counts[faixa] > 0
+    ]
+
+    # Construir by_bairro com os 3 volumes
+    by_bairro = [
+        {
+            'bairro': bairro,
+            'qtd': bairro_volumes[bairro]['qtd'],
+            'vol_selected': round(bairro_volumes[bairro]['vol_selected'], 2),
+            'vol_compared': round(bairro_volumes[bairro]['vol_compared'], 2),
+            'vol_diff': round(bairro_volumes[bairro]['vol_diff'], 2),
+        }
+        for bairro in sorted(bairro_volumes.keys(), key=lambda x: bairro_volumes[x]['qtd'], reverse=True)
+    ]
+
+    variance_order = [
+        'Muito menos (<-75%)',
+        'Muito menos (-75% a -50%)',
+        'Menos (-50% a -30%)',
+        'Pouco menos (-30% a -10%)',
+        'Esperado (-2% a +2%)',
+        'Pouco mais (+2% a +10%)',
+        'Mais (+10% a +30%)',
+        'Muito mais (+30% a +75%)',
+        'Muito mais (>+75%)',
+        'Sem comparação',
+    ]
+    by_bairro_faixa = []
+    for bairro_label in sorted(bairro_faixa_counts.keys(), key=lambda x: x.lower()):
+        for faixa in variance_order:
+            qtd = bairro_faixa_counts[bairro_label].get(faixa, 0)
+            if qtd > 0:
+                by_bairro_faixa.append({
+                    'bairro': bairro_label,
+                    'faixa': faixa,
+                    'qtd': qtd,
+                })
+
+    vol_fat_max_row = _apply_filters(db.query(Ponto)).filter(Ponto.vol_fat.isnot(None))
+    vol_fat_max = float(vol_fat_max_row.with_entities(sqlfunc.max(Ponto.vol_fat)).scalar() or 0)
+
+    total_vol_q = _apply_filters(db.query(Ponto)).with_entities(sqlfunc.coalesce(sqlfunc.sum(Ponto.vol_fat), 0))
+    total_valor_q = _apply_filters(db.query(Ponto)).with_entities(sqlfunc.coalesce(sqlfunc.sum(Ponto.sum_valor), 0))
+    total_volume_total_q = _apply_filters(db.query(Ponto)).with_entities(sqlfunc.coalesce(sqlfunc.sum(Ponto.volume_total), 0))
+    total_deriva_q = _apply_filters(db.query(Ponto)).with_entities(sqlfunc.coalesce(sqlfunc.sum(Ponto.deriva_faturar), 0))
+
+    total_vol_row = total_vol_q.scalar()
+    total_valor_row = total_valor_q.scalar()
+    total_volume_total_row = total_volume_total_q.scalar()
+    total_deriva_row = total_deriva_q.scalar()
+
+    volume_series = {}
+    for i in range(1, 13):
+        volume_series[f"volume_{i:02d}"] = float(
+            _apply_filters(db.query(Ponto))
+                .with_entities(sqlfunc.coalesce(sqlfunc.sum(getattr(Ponto, f'volume_{i:02d}')), 0))
+                .scalar() or 0
+        )
+
     return {
-        "total": total,
-        "com_coords": com_coords,
-        "by_tipo": by_tipo,
-        "vol_fat_max": vol_fat_max,
-        "total_vol": float(total_vol_row) if total_vol_row else 0,
-        "total_valor": float(total_valor_row) if total_valor_row else 0,
+        'total': total,
+        'com_coords': com_coords,
+        'by_tipo': by_tipo,
+        'by_bairro': by_bairro,
+        'by_faixa': by_faixa,
+        'by_bairro_faixa': by_bairro_faixa,
+        'vol_fat_max': vol_fat_max,
+        'total_vol': float(total_vol_row) if total_vol_row else 0,
+        'total_valor': float(total_valor_row) if total_valor_row else 0,
+        'total_volume_total': float(total_volume_total_row) if total_volume_total_row else 0,
+        'total_deriva_faturar': float(total_deriva_row) if total_deriva_row else 0,
+        'volume_series': volume_series,
     }
+
+
+@app.get("/api/volume-comparison")
+def get_volume_comparison(
+    db: Session = Depends(get_db),
+    cidade: Optional[str] = Query(None),
+    tipo_faturamento: Optional[str] = Query(None),
+    gc: Optional[str] = Query(None),
+):
+    from sqlalchemy import func as sqlfunc
+    base_q = db.query(Ponto)
+    if cidade:
+        base_q = base_q.filter(Ponto.cidade == cidade)
+    if tipo_faturamento:
+        base_q = base_q.filter(Ponto.tipo_faturamento == tipo_faturamento)
+    if gc:
+        gc_norm = gc.strip().upper().replace('Ã', 'A').replace('Õ', 'O')
+        if gc_norm == "SIM":
+            base_q = base_q.filter(Ponto.gc.ilike("SIM"))
+        elif gc_norm == "NAO":
+            base_q = base_q.filter(~Ponto.gc.ilike("SIM"))
+
+    totals = {
+        "vol_fat": float(base_q.with_entities(sqlfunc.coalesce(sqlfunc.sum(Ponto.vol_fat), 0)).scalar() or 0),
+        "volume_total": float(base_q.with_entities(sqlfunc.coalesce(sqlfunc.sum(Ponto.volume_total), 0)).scalar() or 0),
+        "deriva_faturar": float(base_q.with_entities(sqlfunc.coalesce(sqlfunc.sum(Ponto.deriva_faturar), 0)).scalar() or 0),
+    }
+    volume_series = {}
+    for i in range(1, 13):
+        field = getattr(Ponto, f"volume_{i:02d}")
+        volume_series[f"volume_{i:02d}"] = float(base_q.with_entities(sqlfunc.coalesce(sqlfunc.sum(field), 0)).scalar() or 0)
+    return {"totals": totals, "volume_series": volume_series}
 
 
 @app.get("/api/buscar")
@@ -696,9 +1145,17 @@ def get_analitico(
     tipo_faturamento: Optional[str] = Query(None),
     macro: Optional[str] = Query(None),
     gc: Optional[str] = Query(None),
+    selected_month: Optional[int] = Query(None, ge=1, le=12),
+    comparison_month: Optional[int] = Query(None, ge=1, le=12),
+    compare_with_deveria: bool = Query(False),
+    compare_month_legacy: Optional[int] = Query(None, alias="compare_month", ge=1, le=12),
     limit: int = Query(50000, le=200000),
 ):
     """Retorna analítico agregado dos registros nos filtros selecionados."""
+    if selected_month is None and compare_month_legacy is not None:
+        selected_month = compare_month_legacy
+    if compare_with_deveria:
+        comparison_month = None
     from sqlalchemy import func as sqlfunc
 
     base_q = db.query(Ponto)
@@ -707,10 +1164,12 @@ def get_analitico(
     if rota:             base_q = base_q.filter(Ponto.rota == rota)
     if tipo_faturamento: base_q = base_q.filter(Ponto.tipo_faturamento == tipo_faturamento)
     if macro:            base_q = base_q.filter(Ponto.macro == macro)
-    if gc == "SIM":
-        base_q = base_q.filter(Ponto.gc.ilike("SIM"))
-    elif gc == "NAO":
-        base_q = base_q.filter(~Ponto.gc.ilike("SIM"))
+    if gc:
+        gc_norm = gc.strip().upper().replace('Ã', 'A').replace('Õ', 'O')
+        if gc_norm == "SIM":
+            base_q = base_q.filter(Ponto.gc.ilike("SIM"))
+        elif gc_norm == "NAO":
+            base_q = base_q.filter(~Ponto.gc.ilike("SIM"))
 
     total = base_q.count()
     agg_row = base_q.with_entities(
@@ -756,6 +1215,23 @@ def get_analitico(
             "vol_fat":        p.vol_fat,
             "sum_valor":      p.sum_valor,
             "is_grande":      p.is_grande,
+            "selected_month": selected_month,
+            "comparison_month": comparison_month,
+            "compare_with_deveria": compare_with_deveria,
+            "selected_month_label": f"Mês {selected_month:02d}" if selected_month else "Nenhum",
+            "comparison_month_label": compare_with_deveria
+                and 'Deveria Faturar' or (f"Mês {comparison_month:02d}" if comparison_month else 'Nenhum'),
+            "actual_value":    resolve_actual_volume(p, selected_month),
+            "expected_value":  resolve_expected_volume(p, compare_with_deveria, comparison_month),
+            "deveria":         p.deriva_faturar,
+            "variance":        format_variance(
+                resolve_actual_volume(p, selected_month),
+                resolve_expected_volume(p, compare_with_deveria, comparison_month),
+            ),
+            "variance_pct":    format_variance_pct(
+                resolve_actual_volume(p, selected_month),
+                resolve_expected_volume(p, compare_with_deveria, comparison_month),
+            ),
         }
         for p in pontos
     ]
@@ -770,3 +1246,85 @@ def get_analitico(
         "by_sit":      by_sit,
         "pontos":      pontos_out,
     }
+
+
+@app.get("/api/analitico/xlsx")
+def get_analitico_xlsx(
+    db: Session = Depends(get_db),
+    cidade: Optional[str] = Query(None),
+    grupo: Optional[str] = Query(None),
+    rota: Optional[str] = Query(None),
+    tipo_faturamento: Optional[str] = Query(None),
+    macro: Optional[str] = Query(None),
+    gc: Optional[str] = Query(None),
+    selected_month: Optional[int] = Query(None, ge=1, le=12),
+    comparison_month: Optional[int] = Query(None, ge=1, le=12),
+    compare_with_deveria: bool = Query(False),
+    compare_month_legacy: Optional[int] = Query(None, alias="compare_month", ge=1, le=12),
+):
+    if selected_month is None and compare_month_legacy is not None:
+        selected_month = compare_month_legacy
+    if compare_with_deveria:
+        comparison_month = None
+
+    base_q = db.query(Ponto)
+    if cidade:           base_q = base_q.filter(Ponto.cidade == cidade)
+    if grupo:            base_q = base_q.filter(Ponto.cod_grupo == grupo)
+    if rota:             base_q = base_q.filter(Ponto.rota == rota)
+    if tipo_faturamento: base_q = base_q.filter(Ponto.tipo_faturamento == tipo_faturamento)
+    if macro:            base_q = base_q.filter(Ponto.macro == macro)
+    if gc:
+        gc_norm = gc.strip().upper().replace('Ã', 'A').replace('Õ', 'O')
+        if gc_norm == "SIM":
+            base_q = base_q.filter(Ponto.gc.ilike("SIM"))
+        elif gc_norm == "NAO":
+            base_q = base_q.filter(~Ponto.gc.ilike("SIM"))
+
+    pontos = base_q.order_by(Ponto.vol_fat.desc().nullslast()).all()
+    pontos_out = build_analitico_rows(pontos, selected_month, comparison_month, compare_with_deveria)
+
+    df = pd.DataFrame(pontos_out)
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Analitico")
+    output.seek(0)
+
+    filename = f"analitico_{datetime.datetime.now():%Y-%m-%d}.xlsx"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
+
+
+@app.get("/api/pontos/xlsx")
+def get_pontos_xlsx(
+    db: Session = Depends(get_db),
+):
+    """Exporta todo o banco de dados de pontos em Excel, com coluna adicional bairro."""
+    result = db.execute(text("SELECT * FROM pontos")).mappings().all()
+    rows = [dict(r) for r in result]
+    df = pd.DataFrame(rows)
+
+    if "bairro" not in df.columns:
+        df["bairro"] = ""
+
+    if "cidade" in df.columns and "bairro" in df.columns:
+        cols = list(df.columns)
+        cols.remove("bairro")
+        cols.insert(cols.index("cidade") + 1, "bairro")
+        df = df[cols]
+
+    output = io.BytesIO()
+    with pd.ExcelWriter(output, engine="openpyxl") as writer:
+        df.to_excel(writer, index=False, sheet_name="Pontos")
+    output.seek(0)
+
+    filename = f"pontos_{datetime.datetime.now():%Y-%m-%d}.xlsx"
+    headers = {"Content-Disposition": f'attachment; filename="{filename}"'}
+    return StreamingResponse(
+        output,
+        media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        headers=headers,
+    )
